@@ -1,9 +1,10 @@
+// src/components/ExpenseItem.tsx
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
 export interface Expense {
   id: string;
-  description: string;
+  title: string;
   category: string;
   amount: number;
   date: string;
@@ -11,45 +12,60 @@ export interface Expense {
 
 interface Props {
   expense: Expense;
+  onDelete?: () => void;
 }
 
-const ExpenseItem: React.FC<Props> = ({ expense }) => {
+const ExpenseItem: React.FC<Props> = ({ expense, onDelete }) => {
   return (
     <View style={styles.container}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.description}>{expense.description}</Text>
-        <Text style={styles.meta}>
-          {expense.category} · {expense.date}
-        </Text>
+      <View>
+        <Text style={styles.title}>{expense.title}</Text>
+        <Text style={styles.category}>{expense.category}</Text>
       </View>
-      <Text style={styles.amount}>L {expense.amount.toFixed(2)}</Text>
+
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={styles.amount}>L {expense.amount.toFixed(2)}</Text>
+        <Text style={styles.date}>{expense.date}</Text>
+
+        {onDelete && (
+          <TouchableOpacity onPress={onDelete}>
+            <Text style={styles.delete}>Eliminar</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    backgroundColor: '#f3f4f6',
-    padding: 12,
+    backgroundColor: '#F5F5F5',
+    padding: 14,
+    marginVertical: 6,
     borderRadius: 10,
-    marginBottom: 8,
-    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  description: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  meta: {
-    marginTop: 2,
-    color: '#6b7280',
-    fontSize: 12,
-  },
-  amount: {
-    marginLeft: 12,
+  title: {
     fontWeight: '700',
     fontSize: 16,
-    color: '#dc2626',
+  },
+  category: {
+    fontSize: 12,
+    color: '#757575',
+  },
+  amount: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  date: {
+    fontSize: 12,
+    color: '#9E9E9E',
+  },
+  delete: {
+    marginTop: 4,
+    fontSize: 12,
+    color: 'red',
   },
 });
 
