@@ -1,21 +1,14 @@
-// src/components/ExpenseItem.tsx
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-
-export interface Expense {
-  id: string;
-  title: string;
-  category: string;
-  amount: number;
-  date: string;
-}
+import { Ionicons } from '@expo/vector-icons';
+import { Expense } from '../context/ExpensesContext';
 
 interface Props {
   expense: Expense;
-  onDelete?: () => void;
+  onDelete: () => void;
 }
 
-const ExpenseItem: React.FC<Props> = ({ expense, onDelete }) => {
+export default function ExpenseItem({ expense, onDelete }: Props) {
   return (
     <View style={styles.container}>
       <View>
@@ -23,50 +16,30 @@ const ExpenseItem: React.FC<Props> = ({ expense, onDelete }) => {
         <Text style={styles.category}>{expense.category}</Text>
       </View>
 
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={styles.amount}>L {expense.amount.toFixed(2)}</Text>
+      <View style={styles.right}>
+        <Text style={styles.amount}>L {expense.amount}</Text>
         <Text style={styles.date}>{expense.date}</Text>
 
-        {onDelete && (
-          <TouchableOpacity onPress={onDelete}>
-            <Text style={styles.delete}>Eliminar</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={onDelete}>
+          <Ionicons name="trash-outline" size={20} color="red" />
+        </TouchableOpacity>
       </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: "#EEE",
     padding: 14,
-    marginVertical: 6,
-    borderRadius: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginBottom: 10,
+    borderRadius: 8,
+    flexDirection: "row",
+    justifyContent: "space-between"
   },
-  title: {
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  category: {
-    fontSize: 12,
-    color: '#757575',
-  },
-  amount: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  date: {
-    fontSize: 12,
-    color: '#9E9E9E',
-  },
-  delete: {
-    marginTop: 4,
-    fontSize: 12,
-    color: 'red',
-  },
+  title: { fontSize: 16, fontWeight: "600" },
+  category: { color: "#555" },
+  right: { alignItems: "flex-end" },
+  amount: { fontWeight: "700" },
+  date: { fontSize: 12, color: "#666" },
 });
-
-export default ExpenseItem;

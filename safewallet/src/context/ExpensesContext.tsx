@@ -1,9 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  ReactNode,
-} from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 export interface Expense {
   id: string;
@@ -21,31 +16,24 @@ interface ExpensesContextValue {
 
 const ExpensesContext = createContext<ExpensesContextValue | undefined>(undefined);
 
-const INITIAL_EXPENSES: Expense[] = [
-  { id: '1', title: 'Almuerzo', category: 'Comida', amount: 150, date: '2025-11-20' },
-  { id: '2', title: 'Bus', category: 'Transporte', amount: 25, date: '2025-11-20' },
-];
-
 export const ExpensesProvider = ({ children }: { children: ReactNode }) => {
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
+  const [expenses, setExpenses] = useState<Expense[]>([
+    { id: '1', title: 'Almuerzo', category: 'Comida', amount: 150, date: '2025-11-20' },
+    { id: '2', title: 'Bus', category: 'Transporte', amount: 25, date: '2025-11-20' },
+  ]);
 
-  const addExpense: ExpensesContextValue['addExpense'] = ({
-    title,
-    category,
-    amount,
-  }) => {
+  const addExpense = (data: { title: string; category: string; amount: number }) => {
     const newExpense: Expense = {
       id: Date.now().toString(),
-      title,
-      category,
-      amount,
-      date: new Date().toISOString().split('T')[0], // fecha de hoy
+      title: data.title,
+      category: data.category,
+      amount: data.amount,
+      date: new Date().toISOString().slice(0, 10),
     };
-
     setExpenses((prev) => [newExpense, ...prev]);
   };
 
-  const removeExpense: ExpensesContextValue['removeExpense'] = (id) => {
+  const removeExpense = (id: string) => {
     setExpenses((prev) => prev.filter((exp) => exp.id !== id));
   };
 
@@ -58,8 +46,6 @@ export const ExpensesProvider = ({ children }: { children: ReactNode }) => {
 
 export const useExpenses = () => {
   const ctx = useContext(ExpensesContext);
-  if (!ctx) {
-    throw new Error('useExpenses debe usarse dentro de ExpensesProvider');
-  }
+  if (!ctx) throw new Error("useExpenses debe usarse dentro de ExpensesProvider");
   return ctx;
 };

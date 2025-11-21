@@ -1,3 +1,4 @@
+// src/navigation/RootNavigator.tsx
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -19,25 +20,42 @@ function AppTabs() {
       screenOptions={({ route }) => ({
         headerTitleAlign: 'center',
         tabBarLabelStyle: { fontSize: 12 },
-        tabBarIcon: ({ focused, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'wallet';
-          if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
-          else if (route.name === 'AddExpense')
-            iconName = focused ? 'add-circle' : 'add-circle-outline';
-          else if (route.name === 'Summary')
-            iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+        tabBarIcon: ({ focused, size, color }) => {
+          let iconName: keyof typeof Ionicons.glyphMap;
 
-          return <Ionicons name={iconName} size={size} />;
+          switch (route.name) {
+            case 'Home':
+              iconName = focused ? 'home' : 'home-outline';
+              break;
+            case 'AddExpense':
+              iconName = focused ? 'add-circle' : 'add-circle-outline';
+              break;
+            case 'Summary':
+              iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+              break;
+            default:
+              iconName = 'wallet';
+          }
+
+          return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Inicio' }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ title: 'Inicio' }}
+      />
       <Tab.Screen
         name="AddExpense"
         component={AddExpenseScreen}
         options={{ title: 'Agregar gasto' }}
       />
-      <Tab.Screen name="Summary" component={SummaryScreen} options={{ title: 'Resumen' }} />
+      <Tab.Screen
+        name="Summary"
+        component={SummaryScreen}
+        options={{ title: 'Resumen' }}
+      />
     </Tab.Navigator>
   );
 }
@@ -51,5 +69,3 @@ export default function RootNavigator() {
     </Stack.Navigator>
   );
 }
-
-
