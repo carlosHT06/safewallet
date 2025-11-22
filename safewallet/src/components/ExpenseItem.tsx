@@ -1,14 +1,20 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Expense } from '../context/ExpensesContext';
+
+export interface Expense {
+  id: string;
+  title: string;
+  category: string;
+  amount: number;
+  date: string;
+}
 
 interface Props {
   expense: Expense;
-  onDelete: () => void;
+  onDelete?: () => void;
 }
 
-export default function ExpenseItem({ expense, onDelete }: Props) {
+const ExpenseItem: React.FC<Props> = ({ expense, onDelete }) => {
   return (
     <View style={styles.container}>
       <View>
@@ -17,29 +23,58 @@ export default function ExpenseItem({ expense, onDelete }: Props) {
       </View>
 
       <View style={styles.right}>
-        <Text style={styles.amount}>L {expense.amount}</Text>
+        <Text style={styles.amount}>L {expense.amount.toFixed(2)}</Text>
         <Text style={styles.date}>{expense.date}</Text>
 
-        <TouchableOpacity onPress={onDelete}>
-          <Ionicons name="trash-outline" size={20} color="red" />
-        </TouchableOpacity>
+        {onDelete && (
+          <TouchableOpacity onPress={onDelete} style={styles.deleteBtn}>
+            <Text style={styles.deleteText}>Eliminar</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#EEE",
+    backgroundColor: '#F5F5F5',
     padding: 14,
-    marginBottom: 10,
-    borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "space-between"
+    marginVertical: 6,
+    borderRadius: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  title: { fontSize: 16, fontWeight: "600" },
-  category: { color: "#555" },
-  right: { alignItems: "flex-end" },
-  amount: { fontWeight: "700" },
-  date: { fontSize: 12, color: "#666" },
+  title: {
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  category: {
+    fontSize: 12,
+    color: '#757575',
+  },
+  right: {
+    alignItems: 'flex-end',
+  },
+  amount: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  date: {
+    fontSize: 12,
+    color: '#9E9E9E',
+  },
+  deleteBtn: {
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#e53935',
+    borderRadius: 6,
+  },
+  deleteText: {
+    color: '#fff',
+    fontSize: 12,
+  },
 });
+
+export default ExpenseItem;
