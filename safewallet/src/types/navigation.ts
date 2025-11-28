@@ -6,6 +6,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined;
-  AddExpense?: { edit?: true; expenseId?: string } | undefined;
+  AddExpense: { edit?: true; expenseId?: string } | undefined;
   Summary: undefined;
+  Profile: undefined; 
 };

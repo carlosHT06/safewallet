@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 const SUPABASE_URL = 'https://nzeummhwvmeepchjfjtw.supabase.co';
@@ -198,6 +199,47 @@ export async function getUserByEmail(email: string) {
     return data ?? null;
   } catch (err) {
     console.error('[getUserByEmail] exception:', err);
+    return null;
+  }
+}
+
+// obtiene el perfil por id desde la tabla 'users'
+export async function getUserById(id: string) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[getUserById] error:', error);
+      throw error;
+    }
+    return data ?? null;
+  } catch (err) {
+    console.error('[getUserById] exception:', err);
+    return null;
+  }
+}
+
+// guarda perfil en AsyncStorage
+export async function saveProfileToStorage(profile: any) {
+  try {
+    await AsyncStorage.setItem('@user_profile', JSON.stringify(profile ?? {}));
+  } catch (e) {
+    console.warn('[saveProfileToStorage] error', e);
+  }
+}
+
+// carga perfil desde AsyncStorage
+export async function loadProfileFromStorage() {
+  try {
+    const raw = await AsyncStorage.getItem('@user_profile');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('[loadProfileFromStorage] error', e);
     return null;
   }
 }
