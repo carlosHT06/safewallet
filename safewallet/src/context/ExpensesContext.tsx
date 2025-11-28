@@ -1,4 +1,3 @@
-// src/context/ExpensesContext.tsx
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { fetchExpenses, insertExpense, deleteExpenseById, SupabaseExpense } from '../services/supabase';

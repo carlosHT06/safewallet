@@ -1,4 +1,3 @@
-// src/screens/RegisterScreen.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -77,22 +76,8 @@ export default function RegisterScreen({ navigation }: any) {
         // pero aquí lanzamos el error para que el catch lo maneje.
         throw insertResp.error;
       }
-
-      // 3) (Opcional) Si signUp no crea sesión automáticamente y quieres iniciar sesión aquí,
-      // puedes descomentar el siguiente bloque:
-      /*
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      });
-      console.log('[Register] auto signIn:', signInData, signInError);
-      if (signInError) {
-        // no obligatorio, solo advertimos
-        console.warn('[Register] Auto sign in failed:', signInError);
-      }
-      */
-
-      Alert.alert('Registro exitoso', 'Tu cuenta ha sido creada.');
+     
+     Alert.alert('Registro exitoso', 'Tu cuenta ha sido creada.');
       navigation.goBack(); // volver al Login (o navigation.replace('AppTabs') si quieres entrar directo)
     } catch (err: any) {
       console.log('Register error:', err);

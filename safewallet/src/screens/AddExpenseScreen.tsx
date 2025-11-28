@@ -1,4 +1,3 @@
-// src/screens/AddExpenseScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,

@@ -1,4 +1,3 @@
-// src/screens/SummaryScreen.tsx
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, TextInput, ScrollView } from 'react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';

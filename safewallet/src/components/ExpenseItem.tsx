@@ -1,4 +1,3 @@
-// src/components/ExpenseItem.tsx
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Expense } from '../context/ExpensesContext';
