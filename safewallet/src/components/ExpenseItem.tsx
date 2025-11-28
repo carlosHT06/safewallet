@@ -1,13 +1,8 @@
+// src/components/ExpenseItem.tsx
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-
-export interface Expense {
-  id: string;
-  title: string;
-  category: string;
-  amount: number;
-  date: string;
-}
+import { Expense } from '../context/ExpensesContext';
+import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
   expense: Expense;
@@ -23,12 +18,11 @@ const ExpenseItem: React.FC<Props> = ({ expense, onDelete }) => {
       </View>
 
       <View style={styles.right}>
-        <Text style={styles.amount}>L {expense.amount.toFixed(2)}</Text>
+        <Text style={styles.amount}>L {Number(expense.amount).toFixed(2)}</Text>
         <Text style={styles.date}>{expense.date}</Text>
-
         {onDelete && (
           <TouchableOpacity onPress={onDelete} style={styles.deleteBtn}>
-            <Text style={styles.deleteText}>Eliminar</Text>
+            <Ionicons name="trash-outline" size={20} color="#b71c1c" />
           </TouchableOpacity>
         )}
       </View>
@@ -45,36 +39,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  title: {
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  category: {
-    fontSize: 12,
-    color: '#757575',
-  },
-  right: {
-    alignItems: 'flex-end',
-  },
-  amount: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  date: {
-    fontSize: 12,
-    color: '#9E9E9E',
-  },
-  deleteBtn: {
-    marginTop: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#e53935',
-    borderRadius: 6,
-  },
-  deleteText: {
-    color: '#fff',
-    fontSize: 12,
-  },
+  right: { alignItems: 'flex-end' },
+  title: { fontWeight: '700', fontSize: 16 },
+  category: { fontSize: 12, color: '#757575' },
+  amount: { fontSize: 16, fontWeight: '700' },
+  date: { fontSize: 12, color: '#9E9E9E' },
+  deleteBtn: { marginTop: 6 },
 });
 
 export default ExpenseItem;

@@ -1,56 +1,21 @@
+// src/components/CustomButton.tsx
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, GestureResponderEvent } from 'react-native';
-
-type Variant = 'primary' | 'secondary';
+import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
 interface Props {
   title: string;
-  onPress: (event: GestureResponderEvent) => void;
-  variant?: Variant;
-  disabled?: boolean;
+  onPress: () => void;
 }
 
-const CustomButton: React.FC<Props> = ({ title, onPress, variant = 'primary', disabled }) => {
-  return (
-    <TouchableOpacity
-      style={[
-        styles.button,
-        variant === 'secondary' && styles.secondary,
-        disabled && styles.disabled,
-      ]}
-      onPress={onPress}
-      activeOpacity={0.8}
-      disabled={disabled}
-    >
-      <Text style={[styles.text, variant === 'secondary' && styles.secondaryText]}>
-        {title}
-      </Text>
-    </TouchableOpacity>
-  );
-};
+const CustomButton: React.FC<Props> = ({ title, onPress }) => (
+  <TouchableOpacity style={styles.btn} onPress={onPress}>
+    <Text style={styles.txt}>{title}</Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
-  button: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginVertical: 6,
-  },
-  secondary: {
-    backgroundColor: '#e5e7eb',
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-  text: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  secondaryText: {
-    color: '#111827',
-  },
+  btn: { backgroundColor: '#4caf50', padding: 12, borderRadius: 8, alignItems: 'center' },
+  txt: { color: '#fff', fontWeight: '700' },
 });
 
 export default CustomButton;

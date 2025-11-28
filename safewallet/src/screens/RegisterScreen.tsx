@@ -1,120 +1,124 @@
+// src/screens/RegisterScreen.tsx
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
-import CustomInput from '../components/CustomInput';
-import CustomButton from '../components/CustomButton';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../types/navigation';
+import { View, TextInput, Button, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { supabase } from '../services/supabase';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
-
-const RegisterScreen: React.FC<Props> = ({ navigation }) => {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+export default function RegisterScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [errors, setErrors] = useState<{
-    name?: string;
-    phone?: string;
-    email?: string;
-    password?: string;
-    confirm?: string;
-  }>({});
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const validate = () => {
-    const newErrors: typeof errors = {};
+  const handleRegister = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Email y contraseña son requeridos');
+      return;
+    }
+    if (password !== confirm) {
+      Alert.alert('Error', 'Las contraseñas no coinciden');
+      return;
+    }
 
-    if (!name) newErrors.name = 'El nombre es obligatorio';
+    setLoading(true);
+    try {
+      // 1. Crear usuario en AUTH
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-    if (!phone) newErrors.phone = 'El teléfono es obligatorio';
-    else if (!/^\d{8}$/.test(phone)) newErrors.phone = 'Debe tener 8 dígitos';
+      if (error) throw error;
 
-    if (!email) newErrors.email = 'El correo es obligatorio';
-    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Correo inválido';
+      const authUser = data.user;
+      if (!authUser) throw new Error("No se pudo crear el usuario.");
 
-    if (!password) newErrors.password = 'La contraseña es obligatoria';
-    else if (password.length < 6) newErrors.password = 'Mínimo 6 caracteres';
+      // 2. Insertar en tabla public.users
+      const { error: insertError } = await supabase.from('users').insert({
+        id: authUser.id,
+        email,
+        name,
+        phone,
+      });
 
-    if (confirm !== password) newErrors.confirm = 'Las contraseñas no coinciden';
+      if (insertError) throw insertError;
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleRegister = () => {
-    if (!validate()) return;
-
-    Alert.alert('Cuenta creada', 'Tu usuario de SafeWallet ha sido registrado.', [
-      {
-        text: 'Ir al login',
-        onPress: () => navigation.goBack(),
-      },
-    ]);
+      Alert.alert('Registro exitoso', 'Tu cuenta ha sido creada.');
+      navigation.goBack(); // regresar al Login
+    } catch (err: any) {
+      console.log("Register error:", err);
+      Alert.alert("Error", err.message ?? "No se pudo registrar.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.title}>Crear cuenta</Text>
 
-      <CustomInput
-        label="Nombre completo"
-        placeholder="Carlos Herrera"
+      <TextInput
+        placeholder="Nombre"
         value={name}
         onChangeText={setName}
-        error={errors.name}
+        style={styles.input}
       />
 
-      <CustomInput
-        label="Teléfono"
-        placeholder="88888888"
-        keyboardType="phone-pad"
+      <TextInput
+        placeholder="Teléfono"
         value={phone}
         onChangeText={setPhone}
-        error={errors.phone}
+        style={styles.input}
+        keyboardType="phone-pad"
       />
 
-      <CustomInput
-        label="Correo"
-        placeholder="tucorreo@ejemplo.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
+      <TextInput
+        placeholder="Email"
         value={email}
         onChangeText={setEmail}
-        error={errors.email}
+        style={styles.input}
+        keyboardType="email-address"
+        autoCapitalize="none"
       />
 
-      <CustomInput
-        label="Contraseña"
-        placeholder="******"
+      <TextInput
+        placeholder="Contraseña"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
-        error={errors.password}
+        style={styles.input}
       />
 
-      <CustomInput
-        label="Confirmar contraseña"
-        placeholder="******"
+      <TextInput
+        placeholder="Confirmar contraseña"
         secureTextEntry
         value={confirm}
         onChangeText={setConfirm}
-        error={errors.confirm}
+        style={styles.input}
       />
 
-      <CustomButton title="Registrarme" onPress={handleRegister} />
+      <Button
+        title={loading ? 'Registrando...' : 'Registrarse'}
+        onPress={handleRegister}
+        disabled={loading}
+      />
 
-      <CustomButton
-        title="Ya tengo cuenta"
-        variant="secondary"
+      {/* --- BOTÓN PARA VOLVER AL LOGIN --- */}
+      <TouchableOpacity
         onPress={() => navigation.goBack()}
-      />
-    </ScrollView>
+        style={styles.backButton}
+      >
+        <Text style={styles.backButtonText}>← Volver al inicio de sesión</Text>
+      </TouchableOpacity>
+    </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, justifyContent: 'center', padding: 20, backgroundColor: '#ffffff' },
-  title: { fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
+  container: { padding: 16, flex: 1, justifyContent: 'center', backgroundColor: '#fff' },
+  input: { borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 12, borderRadius: 6 },
+  title: { fontSize: 22, marginBottom: 16, textAlign: 'center', fontWeight: '700' },
+  backButton: { marginTop: 16, alignSelf: 'center' },
+  backButtonText: { color: '#1976d2', fontSize: 14, fontWeight: '600' },
 });
-
-export default RegisterScreen;

@@ -1,23 +1,15 @@
-// App.tsx
+// App.tsx (ejemplo)
 import React from 'react';
-import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import RootNavigator from './src/navigation/RootNavigator';
-
-import { Provider } from 'react-redux';
-import { store } from './src/store/store';
-
-
+import { ExpensesProvider } from './src/context/ExpensesContext';
 
 export default function App() {
   return (
-    <Provider store={store}>
-      {/* <ExpensesProvider>  // si aún lo usas */}
+    <ExpensesProvider>
       <NavigationContainer>
         <RootNavigator />
       </NavigationContainer>
-      {/* </ExpensesProvider> */}
-      <StatusBar style="auto" />
-    </Provider>
+    </ExpensesProvider>
   );
 }
