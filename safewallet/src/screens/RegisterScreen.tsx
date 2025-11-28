@@ -1,6 +1,15 @@
 // src/screens/RegisterScreen.tsx
 import React, { useState } from 'react';
-import { View, TextInput, Button, Alert, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import {
+  View,
+  TextInput,
+  Button,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { supabase } from '../services/supabase';
 
 export default function RegisterScreen({ navigation }: any) {
@@ -12,7 +21,9 @@ export default function RegisterScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!email || !password) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
       Alert.alert('Error', 'Email y contraseña son requeridos');
       return;
     }
@@ -23,32 +34,71 @@ export default function RegisterScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      // 1. Crear usuario en AUTH
-      const { data, error } = await supabase.auth.signUp({
-        email,
+      // 1) Crear usuario en Auth (Supabase)
+      console.log('[Register] Signing up user:', normalizedEmail);
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: normalizedEmail,
         password,
       });
 
-      if (error) throw error;
+      console.log('[Register] signUp response:', signUpData, signUpError);
+      if (signUpError) {
+        throw signUpError;
+      }
 
-      const authUser = data.user;
-      if (!authUser) throw new Error("No se pudo crear el usuario.");
+      const authUser = signUpData.user ?? null;
 
-      // 2. Insertar en tabla public.users
-      const { error: insertError } = await supabase.from('users').insert({
+      // Si no hay `user` devuelto, probablemente está activada la verificación por correo.
+      // En ese caso, no intentamos insertar el perfil porque no tenemos authUser.id.
+      if (!authUser) {
+        Alert.alert(
+          'Registrado - confirma tu correo',
+          'Tu cuenta fue creada. Revisa tu correo y confirma tu cuenta antes de iniciar sesión.'
+        );
+        // Opcional: podrías guardar temporalmente los datos en localStorage para insertar después de confirmar.
+        navigation.goBack();
+        return;
+      }
+
+      // 2) Insertar en tabla public.users (perfil)
+      console.log('[Register] Inserting profile into users table for id:', authUser.id);
+      const insertPayload = {
         id: authUser.id,
-        email,
-        name,
-        phone,
-      });
+        email: normalizedEmail,
+        name: name?.trim() ?? null,
+        phone: phone?.trim() ?? null,
+      };
 
-      if (insertError) throw insertError;
+      const insertResp = await supabase.from('users').insert(insertPayload);
+      console.log('[Register] insertResp:', insertResp);
+
+      if (insertResp.error) {
+        // Si falla el insert, podríamos considerar borrar el usuario de Auth o notificar,
+        // pero aquí lanzamos el error para que el catch lo maneje.
+        throw insertResp.error;
+      }
+
+      // 3) (Opcional) Si signUp no crea sesión automáticamente y quieres iniciar sesión aquí,
+      // puedes descomentar el siguiente bloque:
+      /*
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+      console.log('[Register] auto signIn:', signInData, signInError);
+      if (signInError) {
+        // no obligatorio, solo advertimos
+        console.warn('[Register] Auto sign in failed:', signInError);
+      }
+      */
 
       Alert.alert('Registro exitoso', 'Tu cuenta ha sido creada.');
-      navigation.goBack(); // regresar al Login
+      navigation.goBack(); // volver al Login (o navigation.replace('AppTabs') si quieres entrar directo)
     } catch (err: any) {
-      console.log("Register error:", err);
-      Alert.alert("Error", err.message ?? "No se pudo registrar.");
+      console.log('Register error:', err);
+      // Algunos errores de supabase vienen en err.message o err.error_description
+      const msg = err?.message ?? err?.error_description ?? 'No se pudo registrar.';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -63,6 +113,7 @@ export default function RegisterScreen({ navigation }: any) {
         value={name}
         onChangeText={setName}
         style={styles.input}
+        autoCapitalize="words"
       />
 
       <TextInput
@@ -98,11 +149,17 @@ export default function RegisterScreen({ navigation }: any) {
         style={styles.input}
       />
 
-      <Button
-        title={loading ? 'Registrando...' : 'Registrarse'}
+      <TouchableOpacity
         onPress={handleRegister}
+        style={[styles.button, loading ? { opacity: 0.7 } : null]}
         disabled={loading}
-      />
+      >
+        {loading ? (
+          <ActivityIndicator />
+        ) : (
+          <Text style={styles.buttonText}>Registrarse</Text>
+        )}
+      </TouchableOpacity>
 
       {/* --- BOTÓN PARA VOLVER AL LOGIN --- */}
       <TouchableOpacity
@@ -117,8 +174,22 @@ export default function RegisterScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { padding: 16, flex: 1, justifyContent: 'center', backgroundColor: '#fff' },
-  input: { borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 12, borderRadius: 6 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 10,
+    marginBottom: 12,
+    borderRadius: 6,
+  },
   title: { fontSize: 22, marginBottom: 16, textAlign: 'center', fontWeight: '700' },
   backButton: { marginTop: 16, alignSelf: 'center' },
   backButtonText: { color: '#1976d2', fontSize: 14, fontWeight: '600' },
+  button: {
+    backgroundColor: '#4caf50',
+    marginTop: 6,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontWeight: '700' },
 });

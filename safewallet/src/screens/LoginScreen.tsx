@@ -11,85 +11,91 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
-import { RootStackParamList } from '../types/navigation';
-import { supabase, getUserByEmail } from '../services/supabase';
+import { supabase } from '../services/supabase';
 
-type NavProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
-
-const LoginScreen: React.FC = () => {
-  const navigation = useNavigation<NavProp>();
+export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
 
-  // opcional: escucha cambios de sesión (útil para depuración)
+  // Optional: track auth state changes for debugging
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[AUTH EVENT]', event, session);
+    const sub = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Auth State] event:', event, 'session:', session);
     });
     return () => {
-      try { sub.subscription.unsubscribe(); } catch {}
+      try {
+        // @ts-ignore
+        sub?.subscription?.unsubscribe?.();
+      } catch (e) {
+        // ignore
+      }
     };
   }, []);
 
-  const validate = () => {
-    const newErrors: { email?: string; password?: string } = {};
-    if (!email) newErrors.email = 'Correo requerido';
-    else if (!/^\S+@\S+\.\S+$/.test(email)) newErrors.email = 'Correo inválido';
-    if (!password) newErrors.password = 'Contraseña requerida';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleLogin = async () => {
-    if (!validate()) return;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !password) {
+      Alert.alert('Error', 'Email y contraseña son requeridos');
+      return;
+    }
+
     setLoading(true);
-
     try {
-      // DEBUG: qué URL está usando el cliente
-      // @ts-ignore
-      console.log('DEBUG Supabase URL (client):', (supabase as any).rest?.url ?? 'unknown');
+      console.log('[Login] Attempting signInWithPassword for:', normalizedEmail);
 
-      // DEBUG: listar todas las filas en public.users (ver si la fila existe en la base que lee la app)
-      try {
-        const all = await supabase.from('users').select('*');
-        console.log('DEBUG public.users rows:', all);
-      } catch (e) {
-        console.warn('DEBUG could not select users table:', e);
-      }
-
-      // 1) comprobar que exista el usuario en la tabla (evita entrar "por las buenas")
-      const userRow = await getUserByEmail(email);
-      console.log('BUSCANDO USUARIO EN BD:', userRow);
-
-      if (!userRow) {
-        Alert.alert('Usuario no encontrado', 'No existe una cuenta registrada con ese correo.');
-        setLoading(false);
-        return;
-      }
-
-      // 2) intentar autenticar con la contraseña
+      // 1) Try to sign in first
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
-      // Manejo exhaustivo de errores
+      console.log('[Login] signIn response:', signInData, signInError);
       if (signInError) {
-        console.log('[signInWithPassword] errorObject:', signInError);
-        // Mensajes según tipo
-        // signInError.status y signInError.message pueden ayudar
+        // show friendly message
         const msg = signInError.message ?? 'Correo o contraseña incorrectos.';
         Alert.alert('Error al iniciar sesión', msg);
         setLoading(false);
         return;
       }
 
-      console.log('SignIn success:', signInData);
-      // redirigir a la app
+      const user = signInData.user ?? null;
+      if (!user) {
+        // If no user returned, something odd happened (maybe email confirmation required)
+        Alert.alert(
+          'No autenticado',
+          'El inicio de sesión no devolvió un usuario. Revisa si necesitas confirmar tu correo.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      // 2) Fetch profile from public.users using authenticated context
+      try {
+        console.log('[Login] Fetching profile for user id:', user.id);
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        console.log('[Login] profile fetch result:', profile, profileError);
+        if (profileError) {
+          // warn but allow login
+          console.warn('[Login] profile fetch error:', profileError);
+        } else if (!profile) {
+          console.warn('[Login] profile not found in public.users for id:', user.id);
+        } else {
+          // you can store profile in state/context if needed
+          console.log('[Login] profile:', profile);
+        }
+      } catch (profileFetchErr) {
+        console.warn('[Login] exception fetching profile:', profileFetchErr);
+      }
+
+      // 3) navigate to app
       navigation.replace('AppTabs');
     } catch (err: any) {
       console.error('Login error (catch):', err);
@@ -99,77 +105,68 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  const goToRegister = () => navigation.navigate('Register');
-
   return (
     <KeyboardAvoidingView
-      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.container}
     >
-      <View style={styles.box}>
+      <View style={styles.inner}>
         <Text style={styles.title}>Iniciar sesión</Text>
 
-        <Text style={styles.label}>Correo</Text>
         <TextInput
+          placeholder="Email"
           value={email}
-          onChangeText={(t) => {
-            setEmail(t);
-            if (errors.email) setErrors((s) => ({ ...s, email: undefined }));
-          }}
-          placeholder="tu@correo.com"
+          onChangeText={setEmail}
+          style={styles.input}
           keyboardType="email-address"
           autoCapitalize="none"
-          style={[styles.input, errors.email && styles.inputError]}
         />
-        {errors.email ? <Text style={styles.errText}>{errors.email}</Text> : null}
 
-        <Text style={[styles.label, { marginTop: 12 }]}>Contraseña</Text>
         <TextInput
-          value={password}
-          onChangeText={(t) => {
-            setPassword(t);
-            if (errors.password) setErrors((s) => ({ ...s, password: undefined }));
-          }}
-          placeholder="********"
+          placeholder="Contraseña"
           secureTextEntry
-          style={[styles.input, errors.password && styles.inputError]}
+          value={password}
+          onChangeText={setPassword}
+          style={styles.input}
         />
-        {errors.password ? <Text style={styles.errText}>{errors.password}</Text> : null}
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Entrar</Text>}
+        <TouchableOpacity
+          onPress={handleLogin}
+          style={[styles.button, loading ? { opacity: 0.7 } : null]}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator />
+          ) : (
+            <Text style={styles.buttonText}>Iniciar sesión</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.row}>
           <Text>¿No tienes cuenta?</Text>
-          <TouchableOpacity onPress={goToRegister}>
-            <Text style={styles.link}> Regístrate</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <Text style={styles.link}> Crear una</Text>
           </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
   );
-};
-
-export default LoginScreen;
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
-  box: { backgroundColor: '#fafafa', padding: 18, borderRadius: 8, elevation: 2 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
-  label: { fontSize: 14, marginBottom: 6 },
+  container: { flex: 1, backgroundColor: '#fff' },
+  inner: { padding: 16, flex: 1, justifyContent: 'center' },
+  title: { fontSize: 22, marginBottom: 16, textAlign: 'center', fontWeight: '700' },
   input: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: '#ddd',
+    padding: 10,
+    marginBottom: 12,
+    borderRadius: 6,
   },
-  inputError: { borderColor: '#f44336' },
-  errText: { color: '#f44336', marginTop: 6, fontSize: 12 },
   button: {
     backgroundColor: '#4caf50',
-    marginTop: 18,
+    marginTop: 6,
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
