@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, TextInput, ScrollView } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Dimensions, ScrollView } from 'react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import { useExpenses } from '../context/ExpensesContext';
 
@@ -8,16 +8,10 @@ const screenWidth = Dimensions.get('window').width;
 export default function SummaryScreen() {
   const { expenses } = useExpenses();
 
-  // presupuesto mensual ingresado por usuario
-  const [budget, setBudget] = useState('');
-
   // total gastado
   const totalSpent = useMemo(() => {
     return expenses.reduce((sum, item) => sum + Number(item.amount), 0);
   }, [expenses]);
-
-  // dinero disponible
-  const available = budget ? Number(budget) - totalSpent : null;
 
   // agrupar por categoría
   const categories = useMemo(() => {
@@ -29,6 +23,8 @@ export default function SummaryScreen() {
     });
     return map;
   }, [expenses]);
+
+  const hasData = expenses.length > 0;
 
   // data para PieChart
   const pieData = Object.keys(categories).map((cat, i) => ({
@@ -54,71 +50,56 @@ export default function SummaryScreen() {
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Resumen de Gastos</Text>
 
-      {/* PRESUPUESTO */}
-      <View style={styles.card}>
-        <Text style={styles.label}>Presupuesto mensual:</Text>
-        <TextInput
-          placeholder="Ej: 5000"
-          keyboardType="numeric"
-          value={budget}
-          onChangeText={setBudget}
-          style={styles.input}
-        />
-
-        {budget ? (
-          <>
-            <Text style={styles.info}>Total gastado: L {totalSpent}</Text>
-            <Text style={styles.info}>
-              Disponible:{' '}
-              <Text style={{ color: available !== null && available < 0 ? 'red' : 'green' }}>
-                L {available}
-              </Text>
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.info}>Introduce tu presupuesto para calcular tu disponible.</Text>
-        )}
-      </View>
-
-      {/* PIE CHART */}
-      {pieData.length > 0 && (
-        <>
-          <Text style={styles.subtitle}>Gastos por categoría</Text>
-          <PieChart
-            data={pieData.map((item) => ({
-              name: item.name,
-              population: item.amount,
-              color: item.color,
-              legendFontColor: item.legendFontColor,
-              legendFontSize: item.legendFontSize,
-            }))}
-            width={screenWidth}
-            height={220}
-            chartConfig={chartConfig}
-            accessor="population"
-            backgroundColor="transparent"
-            paddingLeft="15"
-            absolute
-          />
-        </>
+      {/* MENSAJE SI NO HAY DATOS */}
+      {!hasData && (
+        <View style={styles.noDataBox}>
+          <Text style={styles.noDataText}>No se han registrado datos aún.</Text>
+        </View>
       )}
 
-      {/* BAR CHART */}
-      {Object.keys(categories).length > 0 && (
+      {/* GRÁFICAS SOLO SI HAY DATOS */}
+      {hasData && (
         <>
-          <Text style={styles.subtitle}>Comparación de categorías</Text>
-          <BarChart
-            data={barData}
-            width={screenWidth - 15}
-            height={260}
-            fromZero
-            showValuesOnTopOfBars
-            chartConfig={chartConfig}
-            style={{ borderRadius: 12 }}
-            // Props requeridas por las definiciones de tipos (pueden estar vacías)
-            yAxisLabel=""
-            yAxisSuffix=""
-          />
+          {/* PIE CHART */}
+          {pieData.length > 0 && (
+            <>
+              <Text style={styles.subtitle}>Gastos por categoría</Text>
+              <PieChart
+                data={pieData.map((item) => ({
+                  name: item.name,
+                  population: item.amount,
+                  color: item.color,
+                  legendFontColor: item.legendFontColor,
+                  legendFontSize: item.legendFontSize,
+                }))}
+                width={screenWidth}
+                height={220}
+                chartConfig={chartConfig}
+                accessor="population"
+                backgroundColor="transparent"
+                paddingLeft="15"
+                absolute
+              />
+            </>
+          )}
+
+          {/* BAR CHART */}
+          {Object.keys(categories).length > 0 && (
+            <>
+              <Text style={styles.subtitle}>Comparación de categorías</Text>
+              <BarChart
+                data={barData}
+                width={screenWidth - 15}
+                height={260}
+                fromZero
+                showValuesOnTopOfBars
+                chartConfig={chartConfig}
+                style={{ borderRadius: 12 }}
+                yAxisLabel=""
+                yAxisSuffix=""
+              />
+            </>
+          )}
         </>
       )}
     </ScrollView>
@@ -151,20 +132,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginVertical: 10,
   },
-  card: {
+
+  // estilos del mensaje de "no hay datos"
+  noDataBox: {
     backgroundColor: '#f3f3f3',
-    padding: 15,
+    padding: 20,
     borderRadius: 10,
-    marginBottom: 20,
+    marginTop: 20,
   },
-  label: { fontWeight: '600' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 8,
-    marginTop: 8,
-    marginBottom: 12,
+  noDataText: {
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
   },
-  info: { fontSize: 16, marginBottom: 4 },
 });

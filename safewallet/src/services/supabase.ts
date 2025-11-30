@@ -1,6 +1,6 @@
+// src/services/supabase.ts
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 
 const SUPABASE_URL = 'https://nzeummhwvmeepchjfjtw.supabase.co';
 const SUPABASE_ANON_KEY ='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56ZXVtbWh3dm1lZXBjaGpmanR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyOTc0OTUsImV4cCI6MjA3OTg3MzQ5NX0.zg52KBYWcu-K5qgBTa3EsiglbRau_UH4VthBS46Wm7U';
@@ -241,5 +241,83 @@ export async function loadProfileFromStorage() {
   } catch (e) {
     console.warn('[loadProfileFromStorage] error', e);
     return null;
+  }
+}
+
+export async function getUserBudget(userId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('budget')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return Number(data?.budget ?? 0);
+  } catch (err) {
+    console.error('[getUserBudget] error', err);
+    return 0;
+  }
+}
+
+/**
+ * Actualizar presupuesto del usuario
+ */
+export async function updateUserBudget(userId: string, budget: number) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ budget })
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('[updateUserBudget] error', err);
+    throw err;
+  }
+}
+
+/* ---------------- helper: rango mes actual (ISO strings) ---------------- */
+function monthRangeIso(now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+/**
+ * Sumar gastos de un usuario en un periodo (por defecto mes actual)
+ * - table expenses: owner_id (uuid), amount (numeric), created_at (timestamp)
+ */
+export async function sumExpensesForUser(userId: string, options?: { from?: string; to?: string }) {
+  try {
+    const range = (options && options.from && options.to)
+      ? { start: options.from, end: options.to }
+      : monthRangeIso();
+
+    const from = range.start;
+    const to = range.end;
+
+    // Usamos un select simple y sumamos en JS.
+    // Para más rendimiento puedes usar SQL SUM(...) con .select('sum:amount') o RPC.
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('amount')
+      .eq('owner_id', userId)
+      .gte('created_at', from)
+      .lte('created_at', to);
+
+    if (error) {
+      console.error('[sumExpensesForUser] error', error);
+      throw error;
+    }
+
+    const total = (data ?? []).reduce((acc: number, r: any) => acc + Number(r.amount ?? 0), 0);
+    return total;
+  } catch (err) {
+    console.error('[sumExpensesForUser] error', err);
+    return 0;
   }
 }

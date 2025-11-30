@@ -10,13 +10,13 @@ import HomeScreen from '../screens/HomeScreen';
 import AddExpenseScreen from '../screens/AddExpenseScreen';
 import SummaryScreen from '../screens/SummaryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 
 import { RootStackParamList, TabParamList } from '../types/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-// componente fallback si alguna pantalla falta o es undefined
 function MissingScreen({ name }: { name: string }) {
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -27,7 +27,18 @@ function MissingScreen({ name }: { name: string }) {
 }
 
 function AppTabs() {
- 
+  // Debug: comprueba imports en consola
+  // (elimina/consulta esto después de depurar)
+  // eslint-disable-next-line no-console
+  console.log('Screens imports:', {
+    LoginScreen,
+    RegisterScreen,
+    HomeScreen,
+    AddExpenseScreen,
+    SummaryScreen,
+    ProfileScreen,
+    SettingsScreen,
+  });
 
   return (
     <Tab.Navigator
@@ -48,26 +59,10 @@ function AppTabs() {
         tabBarActiveTintColor: '#1976d2',
       })}
     >
-      <Tab.Screen
-        name="Home"
-        component={HomeScreen ?? (() => <MissingScreen name="Home" />)}
-        options={{ title: 'Inicio' }}
-      />
-      <Tab.Screen
-        name="AddExpense"
-        component={AddExpenseScreen ?? (() => <MissingScreen name="AddExpense" />)}
-        options={{ title: 'Agregar' }}
-      />
-      <Tab.Screen
-        name="Summary"
-        component={SummaryScreen ?? (() => <MissingScreen name="Summary" />)}
-        options={{ title: 'Resumen' }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen ?? (() => <MissingScreen name="Profile" />)}
-        options={{ title: 'Perfil' }}
-      />
+      <Tab.Screen name="Home" component={HomeScreen ?? (() => <MissingScreen name="Home" />)} options={{ title: 'Inicio' }} />
+      <Tab.Screen name="AddExpense" component={AddExpenseScreen ?? (() => <MissingScreen name="AddExpense" />)} options={{ title: 'Agregar' }} />
+      <Tab.Screen name="Summary" component={SummaryScreen ?? (() => <MissingScreen name="Summary" />)} options={{ title: 'Resumen' }} />
+      <Tab.Screen name="Profile" component={ProfileScreen ?? (() => <MissingScreen name="Profile" />)} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
   );
 }
@@ -75,9 +70,10 @@ function AppTabs() {
 export default function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Login" component={LoginScreen ?? (() => <MissingScreen name="Login" />)} />
+      <Stack.Screen name="Register" component={RegisterScreen ?? (() => <MissingScreen name="Register" />)} />
       <Stack.Screen name="AppTabs" component={AppTabs} />
+      <Stack.Screen name="Settings" component={SettingsScreen ?? (() => <MissingScreen name="Settings" />)} />
     </Stack.Navigator>
   );
 }

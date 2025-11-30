@@ -1,11 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import {View,Text,TextInput,TouchableOpacity,StyleSheet,Alert,KeyboardAvoidingView,Platform,FlatList,} 
-from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  FlatList,
+} from 'react-native';
 import { useExpenses } from '../context/ExpensesContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { TabParamList } from '../types/navigation';
-import { SupabaseExpense, updateExpense } from '../services/supabase'; 
+import { SupabaseExpense, updateExpense } from '../services/supabase';
 
 type NavProp = BottomTabNavigationProp<TabParamList, 'AddExpense'>;
 
@@ -26,7 +35,7 @@ const defaultCategories = [
 export default function AddExpenseScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute();
-  const { addExpense, refresh } = useExpenses();
+  const { addExpense, refresh, expenses, budget } = useExpenses();
 
   const params: any = (route.params ?? {}) as { edit?: boolean; expenseId?: string };
 
@@ -106,11 +115,58 @@ export default function AddExpenseScreen() {
     setShowSuggestions(false);
   };
 
+  // --- CÁLCULOS DE PRESUPUESTO ---
+  const totalSpent = expenses.reduce((s, it) => s + Number(it.amount), 0);
+
+  // si estamos editando, obtener el monto original de ese gasto para ajustar el cálculo
+  const originalExpense = editingId ? expenses.find((e) => e.id === editingId) : undefined;
+  const originalAmount = originalExpense ? Number(originalExpense.amount) : 0;
+
+  // parse budget defensively (acepta string con $ o número)
+  const parseBudgetToNumber = (raw: any): number | null => {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === 'number') return raw;
+    const cleaned = String(raw).replace(/[^0-9.-]+/g, '');
+    const n = cleaned ? Number(cleaned) : NaN;
+    return isNaN(n) ? null : n;
+  };
+  const numericBudget = parseBudgetToNumber(budget);
+
+  // restante disponible teniendo en cuenta si estamos editando (no restar originalAmount si no estamos editando)
+  const remaining = numericBudget !== null
+    ? numericBudget - totalSpent + (isEdit ? originalAmount : 0)
+    : null;
+
+  // determinar si el monto ingresado excede el presupuesto
+  const parsedAmount = Number(amount || '0');
+  const wouldExceed = remaining !== null && parsedAmount > remaining;
+
+  // formato simple para mostrar monedas (puedes cambiar)
+  const formatMoney = (n: number | null) => {
+    if (n === null) return '';
+    return `L ${n}`;
+  };
+  // --- FIN cálculo presupuesto ---
+
   const onSave = async () => {
     const finalCategory = (category || queryCategory).trim() || 'General';
     if (!title.trim()) return Alert.alert('Error', 'Ingrese un título');
     const amt = Number(amount);
     if (isNaN(amt) || amt <= 0) return Alert.alert('Error', 'Ingrese un monto válido');
+
+    // Validación local contra presupuesto (defensiva)
+    if (numericBudget !== null) {
+      const nuevoTotalIfSave = (isEdit ? totalSpent - originalAmount : totalSpent) + amt;
+      if (nuevoTotalIfSave > numericBudget) {
+        const gastadoActualmente = (isEdit ? totalSpent - originalAmount : totalSpent);
+        const disponible = numericBudget - gastadoActualmente;
+        Alert.alert(
+          'Presupuesto excedido',
+          `No se puede registrar este gasto porque excede tu presupuesto.\n\nPresupuesto: ${formatMoney(numericBudget)}\nGastado actualmente: ${formatMoney(gastadoActualmente)}\nDisponible: ${formatMoney(disponible >= 0 ? disponible : 0)}`
+        );
+        return; // detener guardado
+      }
+    }
 
     setSaving(true);
     try {
@@ -123,7 +179,6 @@ export default function AddExpenseScreen() {
         });
         await refresh();
         Alert.alert('Listo', 'Gasto actualizado');
-        // navegar a Home (usamos navigate por seguridad)
         navigation.navigate('Home' as never);
         return;
       }
@@ -197,7 +252,34 @@ export default function AddExpenseScreen() {
           keyboardType="numeric"
         />
 
-        <TouchableOpacity style={[styles.button, saving && { opacity: 0.6 }]} onPress={onSave} disabled={saving}>
+        {/* Mostrar info de presupuesto (si existe) */}
+        {numericBudget !== null && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontSize: 14, color: '#666' }}>
+              Presupuesto: <Text style={{ fontWeight: '700' }}>{formatMoney(numericBudget)}</Text>
+            </Text>
+            <Text style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
+              Gastado: <Text style={{ fontWeight: '700' }}>{formatMoney(isEdit ? totalSpent - originalAmount : totalSpent)}</Text>
+            </Text>
+            <Text style={{ fontSize: 14, marginTop: 4 }}>
+              Disponible:{' '}
+              <Text style={{ fontWeight: '700', color: (remaining !== null && remaining < 0) ? 'red' : '#000' }}>
+                {formatMoney(remaining)}
+              </Text>
+            </Text>
+            {wouldExceed && (
+              <Text style={{ marginTop: 8, color: 'red', fontWeight: '600' }}>
+                Este gasto excede tu presupuesto disponible.
+              </Text>
+            )}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[styles.button, (saving || wouldExceed) && { opacity: 0.6 }]}
+          onPress={onSave}
+          disabled={saving || wouldExceed}
+        >
           <Text style={styles.buttonText}>{saving ? 'Guardando...' : params?.edit ? 'Actualizar' : 'Guardar gasto'}</Text>
         </TouchableOpacity>
       </View>
