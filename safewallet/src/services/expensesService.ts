@@ -40,3 +40,4 @@ export const deleteExpenseDB = async (id: string) => {
 
   if (error) throw error;
 };
+

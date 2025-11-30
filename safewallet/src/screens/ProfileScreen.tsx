@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getUserBudget, updateUserBudget } from '../services/supabase';
+import { useExpenses } from '../context/ExpensesContext';
 
 export default function ProfileScreen() {
   const { profile, loading, refreshProfile, sessionUser } = useAuth();
   const userId = sessionUser?.id ?? profile?.id ?? null;
+
+  const { setBudget: setContextBudget, clearAllExpenses } = useExpenses();
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -36,15 +39,29 @@ export default function ProfileScreen() {
       try {
         // si profile tiene budget, usarlo (evita llamada extra)
         if (profile && typeof profile.budget !== 'undefined') {
+          const parsed = Number(profile.budget ?? 0);
           if (mounted) {
-            setBudget(Number(profile.budget ?? 0));
-            setBudgetInput(Number(profile.budget ?? 0).toFixed(2));
+            setBudget(parsed);
+            setBudgetInput(parsed.toFixed(2));
+            try {
+              // sincronizar contexto local
+              setContextBudget(parsed);
+            } catch (e) {
+              // no crítico si falla
+            }
           }
         } else {
           const b = await getUserBudget(userId);
+          const parsed = Number(b ?? 0);
           if (mounted) {
-            setBudget(Number(b ?? 0));
-            setBudgetInput(Number(b ?? 0).toFixed(2));
+            setBudget(parsed);
+            setBudgetInput(parsed.toFixed(2));
+            try {
+              // sincronizar contexto local
+              setContextBudget(parsed);
+            } catch (e) {
+              // no crítico si falla
+            }
           }
         }
       } catch (e) {
@@ -52,7 +69,7 @@ export default function ProfileScreen() {
       }
     })();
     return () => { mounted = false; };
-  }, [userId, profile]);
+  }, [userId, profile, setContextBudget]);
 
   const onSaveBudget = async () => {
     if (!userId) return Alert.alert('Error', 'Usuario no autenticado.');
@@ -63,8 +80,39 @@ export default function ProfileScreen() {
       await updateUserBudget(userId, val);
       setBudget(val);
       setEditingBudget(false);
+
+      // sincronizar contexto local para que Summary y AddExpense vean el cambio
+      try {
+        setContextBudget(Number(val));
+      } catch (e) {
+        // no crítico si falla
+      }
+
       // refrescar profile en contexto (si lo guardas en users)
-      try { await refreshProfile(); } catch {}
+      try { await refreshProfile(); } catch (err) { /* ignore */ }
+
+      // Preguntar al usuario si desea eliminar todos los gastos
+      Alert.alert(
+        'Limpiar gastos',
+        '¿Deseas eliminar todos los gastos actuales al cambiar el presupuesto? (Esto borrará los registros locales y en el servidor).',
+        [
+          { text: 'Mantener', style: 'cancel' },
+          {
+            text: 'Eliminar',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await clearAllExpenses(true); // borrar remoto + local
+                Alert.alert('Listo', 'Todos los gastos han sido eliminados.');
+              } catch (err) {
+                console.error('[ProfileScreen] clearAllExpenses', err);
+                Alert.alert('Error', 'No se pudieron eliminar los gastos.');
+              }
+            },
+          },
+        ],
+      );
+
       Alert.alert('Listo', 'Presupuesto actualizado.');
     } catch (err: any) {
       console.error('[ProfileScreen] updateBudget', err);
