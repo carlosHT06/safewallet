@@ -1,3 +1,4 @@
+// services/supabase.ts
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -16,6 +17,7 @@ export interface SupabaseExpense {
   created_at?: string | null;
 }
 
+/* -------------------- Helpers -------------------- */
 async function handleResponse<T>(res: { data: T | null; error: any }) {
   if (res.error) {
     throw res.error;
@@ -40,6 +42,7 @@ export async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
+/* ------------------ Expenses: fetch ------------------ */
 export async function fetchExpenses(ownerId?: string): Promise<SupabaseExpense[]> {
   try {
     const query = supabase
@@ -162,6 +165,7 @@ export async function signOutUser(): Promise<boolean> {
   try {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    // limpiar storage local si se guarda perfil
     try { await AsyncStorage.removeItem('@user_profile'); } catch (_) {}
     return true;
   } catch (err) {
@@ -193,21 +197,38 @@ export async function getUserById(id: string) {
   }
 }
 
-export async function saveProfileToStorage(profile: any) {
+/* ------------------ Profile: createUserProfile (upsert) ------------------ */
+/**
+ * Crea o actualiza el perfil del usuario. Usar upsert para asegurar que la fila exista.
+ */
+export async function createUserProfile(profile: {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  budget?: number | null;
+}) {
+  if (!profile?.id) throw new Error('Profile.id is required');
   try {
-    await AsyncStorage.setItem('@user_profile', JSON.stringify(profile ?? {}));
-  } catch (e) {
-    console.warn('[saveProfileToStorage] error', e);
-  }
-}
-export async function loadProfileFromStorage() {
-  try {
-    const raw = await AsyncStorage.getItem('@user_profile');
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (e) {
-    console.warn('[loadProfileFromStorage] error', e);
-    return null;
+    const payload: any = {
+      id: profile.id,
+      email: profile.email ?? null,
+      name: profile.name ?? null,
+      phone: profile.phone ?? null,
+      budget: typeof profile.budget === 'number' ? profile.budget : 0,
+      created_at: new Date().toISOString(),
+    };
+
+    console.log('[createUserProfile] upserting profile for id', profile.id, payload);
+
+    const res = await supabase.from('users').upsert(payload, { onConflict: 'id' }).select().maybeSingle();
+    const data = await handleResponse<any>(res);
+    console.log('[createUserProfile] upsert result', data);
+    return data;
+  } catch (err) {
+    // Log detallado para depuración (RLS, constraints, etc)
+    console.error('[createUserProfile] error', err, (err as any)?.details ?? (err as any)?.message);
+    throw err;
   }
 }
 
@@ -224,14 +245,42 @@ export async function getUserBudget(userId: string) {
   }
 }
 
+/* -------------- updateUserBudget (robusta: update -> upsert si no existe) -------------- */
 export async function updateUserBudget(userId: string, budget: number) {
   if (!userId) throw new Error('userId requerido');
   if (typeof budget !== 'number' || Number.isNaN(budget)) throw new Error('budget inválido');
+
   try {
-    const res = await supabase.from('users').update({ budget }).eq('id', userId).select().maybeSingle();
-    return await handleResponse<any>(res);
+    console.log('[updateUserBudget] attempt update', { userId, budget });
+
+    // Intento de update
+    const updateRes = await supabase
+      .from('users')
+      .update({ budget })
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+
+    const updated = await handleResponse<any>(updateRes);
+    if (updated) {
+      console.log('[updateUserBudget] update succeeded', updated);
+      return updated;
+    }
+
+    // Si no se actualizó (fila inexistente), hacemos upsert para crear la fila mínima
+    console.log('[updateUserBudget] no row updated, performing upsert');
+    const upsertRes = await supabase
+      .from('users')
+      .upsert({ id: userId, budget }, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
+
+    const upserted = await handleResponse<any>(upsertRes);
+    console.log('[updateUserBudget] upsert result', upserted);
+    return upserted;
   } catch (err) {
     console.error('[updateUserBudget] error', err);
+    // Si es error de RLS/permiso, el error lo mostrará aquí (revísalo)
     throw err;
   }
 }
@@ -243,6 +292,9 @@ function monthRangeIso(now = new Date()) {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+/**
+ * Suma montos. Para grandes volúmenes, preferir SQL SUM() o RPC que calcule en BD.
+ */
 export async function sumExpensesForUser(userId: string, options?: { from?: string; to?: string }) {
   if (!userId) return 0;
   try {
@@ -251,6 +303,7 @@ export async function sumExpensesForUser(userId: string, options?: { from?: stri
       : monthRangeIso();
     const { start, end } = range;
 
+    // Alternativa optimizada: usar una vista o RPC que haga SUM(amount) en la BD 
     const res = await supabase
       .from('expenses')
       .select('amount')
@@ -264,5 +317,24 @@ export async function sumExpensesForUser(userId: string, options?: { from?: stri
   } catch (err) {
     console.error('[sumExpensesForUser] error', err);
     return 0;
+  }
+}
+
+/* ------------------ Storage helpers ------------------ */
+export async function saveProfileToStorage(profile: any) {
+  try {
+    await AsyncStorage.setItem('@user_profile', JSON.stringify(profile ?? {}));
+  } catch (e) {
+    console.warn('[saveProfileToStorage] error', e);
+  }
+}
+export async function loadProfileFromStorage() {
+  try {
+    const raw = await AsyncStorage.getItem('@user_profile');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('[loadProfileFromStorage] error', e);
+    return null;
   }
 }

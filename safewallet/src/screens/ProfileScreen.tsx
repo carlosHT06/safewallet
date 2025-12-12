@@ -10,13 +10,11 @@ import {
   Alert,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { getUserBudget, updateUserBudget } from '../services/supabase';
+import { getUserBudget } from '../services/supabase';
 import { useExpenses } from '../context/ExpensesContext';
 import { useNavigation } from '@react-navigation/native';
 import { useSettings } from '../context/SettingsContext';
 
-
-// traducciones simples embebidas (puedes moverlas a un archivo si quieres)
 const i18n = {
   es: {
     title: 'Tu Perfil',
@@ -70,33 +68,28 @@ export default function ProfileScreen() {
   const { profile, loading, refreshProfile, sessionUser } = useAuth();
   const userId = sessionUser?.id ?? profile?.id ?? null;
 
-  // contexto de gastos (para sincronizar presupuesto y borrar gastos)
+  // setContextBudget from ExpensesContext updates remote DB. We must not call it automatically on load.
   const { setBudget: setContextBudget, clearAllExpenses } = useExpenses();
 
-  // navegación
   const navigation = useNavigation<any>();
 
-  // settings (tema + idioma)
   const settings = useSettings();
   const theme = settings?.theme ?? 'light';
   const lang = settings?.lang ?? 'es';
-  const t = i18n[lang] ?? i18n.es; // función de traducción simple
+  const t = i18n[lang] ?? i18n.es;
 
-  // estados locales del perfil
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
 
-  // presupuesto local y edición
-  const [budget, setBudget] = useState<number>(0);
+  const [budget, setBudgetState] = useState<number>(0);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState<string>('');
   const [savingBudget, setSavingBudget] = useState(false);
 
-  // estilos dinámicos segun tema
   const styles = getStyles(theme);
 
-  // cargar perfil en campos visibles
+  // Sync basic profile fields to local state (safe, no side-effects)
   useEffect(() => {
     if (!profile) {
       setName('');
@@ -109,35 +102,30 @@ export default function ProfileScreen() {
     }
   }, [profile]);
 
-  // cargar presupuesto (primero desde profile, si no desde BD) y sincronizar con context
+  // Load initial budget (from profile or from remote) but DO NOT call setContextBudget here.
+  // We only set local UI state and cache; remote writes only happen when user explicitly saves.
   useEffect(() => {
     let mounted = true;
     (async () => {
-      if (!userId) return;
+      if (!userId) {
+        setBudgetState(0);
+        setBudgetInput('0.00');
+        return;
+      }
       try {
-        if (profile && typeof profile.budget !== 'undefined') {
+        if (profile && typeof profile.budget !== 'undefined' && profile.budget !== null) {
           const parsed = Number(profile.budget ?? 0);
           if (mounted) {
-            setBudget(parsed);
+            setBudgetState(parsed);
             setBudgetInput(parsed.toFixed(2));
-            // actualiza contexto local para que otras pantallas lo vean
-            try {
-              if (setContextBudget) await setContextBudget(parsed);
-            } catch {
-              // no crítico
-            }
           }
         } else {
+          // fallback: read from users table
           const b = await getUserBudget(userId);
           const parsed = Number(b ?? 0);
           if (mounted) {
-            setBudget(parsed);
+            setBudgetState(parsed);
             setBudgetInput(parsed.toFixed(2));
-            try {
-              if (setContextBudget) await setContextBudget(parsed);
-            } catch {
-              // no crítico
-            }
           }
         }
       } catch (e) {
@@ -147,34 +135,27 @@ export default function ProfileScreen() {
     return () => {
       mounted = false;
     };
-  }, [userId, profile, setContextBudget]);
+    // Important: only depend on userId and profile (not setContextBudget)
+  }, [userId, profile]);
 
-  // guardar presupuesto (actualiza BD, contexto y pregunta si borrar gastos)
+  // Save budget: use setContextBudget which will handle remote update & profile refresh internally.
+  // We DO NOT call updateUserBudget directly here to avoid double calls.
   const onSaveBudget = async () => {
     if (!userId) return Alert.alert(t.error, t.notAuthed);
+
     const val = Number(budgetInput);
     if (isNaN(val) || val < 0) return Alert.alert(t.error, t.invalidAmount);
+
     setSavingBudget(true);
     try {
-      await updateUserBudget(userId, val);
-      setBudget(val);
+      // Use the ExpensesContext's setBudget — it handles remote + local.
+      await setContextBudget(Number(val));
+
+      // update local UI state
+      setBudgetState(Number(val));
       setEditingBudget(false);
 
-      // sincronizar contexto
-      try {
-        if (setContextBudget) await setContextBudget(Number(val));
-      } catch {
-        // ignore
-      }
-
-      // refrescar profile en AuthContext si corresponde
-      try {
-        if (refreshProfile) await refreshProfile();
-      } catch {
-        // ignore
-      }
-
-      // preguntamos si borrar gastos después de cambiar presupuesto
+      // Ask user whether to clear expenses (show ONE dialog)
       Alert.alert(
         t.done,
         t.clearExpensesQuestion,
@@ -195,8 +176,6 @@ export default function ProfileScreen() {
           },
         ],
       );
-
-      Alert.alert(t.done, t.updatedBudget);
     } catch (err: any) {
       console.error('[ProfileScreen] updateBudget', err);
       Alert.alert(t.error, err?.message ?? t.error);
@@ -205,7 +184,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // abrir Settings (Stack padre) — seguro con fallback
   const goToSettings = () => {
     const parent = navigation.getParent?.();
     if (parent && typeof parent.navigate === 'function') {
@@ -220,7 +198,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // carga mientras AuthContext loading
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -304,8 +281,6 @@ export default function ProfileScreen() {
   );
 }
 
-/**
- */
 function getStyles(theme: 'light' | 'dark') {
   const dark = theme === 'dark';
 

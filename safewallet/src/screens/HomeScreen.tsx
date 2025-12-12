@@ -1,3 +1,4 @@
+// src/screens/HomeScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -13,7 +14,6 @@ import { useExpenses } from '../context/ExpensesContext';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { TabParamList } from '../types/navigation';
-import { signOutUser } from '../services/supabase';
 import { useSettings } from '../context/SettingsContext';
 import { getRate } from '../services/exchangeService';
 
@@ -30,10 +30,10 @@ export default function HomeScreen() {
 
   const isDark = theme === 'dark';
   const colors = {
-    bg: isDark ? '#121212' : '#f5f6fa',
-    card: isDark ? '#1e1e1e' : '#fff',
-    text: isDark ? '#fff' : '#111',
-    subtle: isDark ? '#aaa' : '#666',
+    bg: isDark ? '#0b0b0b' : '#f5f6fa',
+    card: isDark ? '#151515' : '#ffffff',
+    text: isDark ? '#ffffff' : '#111111',
+    subtle: isDark ? '#a9a9a9' : '#666666',
     red: '#d32f2f',
     primary: '#1976d2',
   };
@@ -60,18 +60,6 @@ export default function HomeScreen() {
     })();
     return () => { mounted = false; };
   }, [currency]);
-
-  const onLogout = async () => {
-    try {
-      await signOutUser();
-      navigation.getParent()?.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
-    } catch (err) {
-      Alert.alert('Error', t('No se pudo cerrar sesión.', 'Could not sign out.'));
-    }
-  };
 
   const confirmDelete = (id: string) => {
     Alert.alert(
@@ -143,6 +131,7 @@ export default function HomeScreen() {
             <TouchableOpacity onPress={() => onEdit(item.id)} style={styles.actionBtn}>
               <Text style={[styles.actionText, { color: colors.primary }]}>{t('Editar','Edit')}</Text>
             </TouchableOpacity>
+
             <TouchableOpacity onPress={() => confirmDelete(item.id)} style={styles.actionBtn}>
               <Text style={[styles.actionText, { color: colors.red }]}>{t('Eliminar','Delete')}</Text>
             </TouchableOpacity>
@@ -157,20 +146,16 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* HEADER */}
-      <View style={{ marginBottom: 10, alignItems: 'center' }}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>{t('Tus gastos','Your expenses')}</Text>
+      <View style={{ marginBottom: 10 }}>
+        <Text style={[styles.headerTitle, { color: colors.text, textAlign: 'center' }]}>{t('Tus gastos','Your expenses')}</Text>
 
         <View style={styles.headerActionsCentered}>
-          <TouchableOpacity onPress={refresh} style={styles.linkBtn}>
-            <Text style={[styles.linkText, { color: colors.primary }]}>{t('Actualizar','Refresh')}</Text>
+          <TouchableOpacity onPress={refresh} style={[styles.toolBtn, { borderColor: colors.primary }]}>
+            <Text style={[styles.toolText, { color: colors.primary }]}>{t('Actualizar','Refresh')}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={onClearPress} disabled={clearing} style={styles.linkBtn}>
-            {clearing ? <ActivityIndicator size="small" /> : <Text style={[styles.linkText, { color: colors.red }]}>{t('Limpiar','Clear')}</Text>}
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={onLogout} style={styles.linkBtn}>
-            <Text style={[styles.linkText, { color: colors.subtle }]}>{t('Cerrar sesión','Sign out')}</Text>
+          <TouchableOpacity onPress={onClearPress} disabled={clearing} style={[styles.toolBtn, { borderColor: colors.red }]}>
+            {clearing ? <ActivityIndicator size="small" /> : <Text style={[styles.toolText, { color: colors.red }]}>{t('Limpiar','Clear')}</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -217,7 +202,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: '700',
-    textAlign: 'center',
     marginBottom: 8,
   },
 
@@ -225,11 +209,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginTop: 8,
   },
 
-  linkBtn: { paddingVertical: 4, paddingHorizontal: 6, marginHorizontal: 10 },
-  linkText: { fontWeight: '600' },
+  toolBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginHorizontal: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  toolText: { fontWeight: '600' },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
