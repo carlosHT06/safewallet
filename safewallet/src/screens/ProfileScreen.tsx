@@ -1,24 +1,102 @@
+// src/screens/ProfileScreen.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, TextInput, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+} from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { getUserBudget, updateUserBudget } from '../services/supabase';
 import { useExpenses } from '../context/ExpensesContext';
+import { useNavigation } from '@react-navigation/native';
+import { useSettings } from '../context/SettingsContext';
+
+
+// traducciones simples embebidas (puedes moverlas a un archivo si quieres)
+const i18n = {
+  es: {
+    title: 'Tu Perfil',
+    name: 'Nombre',
+    phone: 'Teléfono',
+    email: 'Email',
+    budgetLabel: 'Presupuesto mensual',
+    editBudget: 'Editar presupuesto',
+    save: 'Guardar',
+    cancel: 'Cancelar',
+    clearExpensesQuestion:
+      '¿Eliminar todos los gastos actuales al cambiar el presupuesto? Esto borrará los registros locales y en el servidor.',
+    keep: 'Mantener',
+    delete: 'Eliminar',
+    done: 'Listo',
+    error: 'Error',
+    notAuthed: 'Usuario no autenticado.',
+    invalidAmount: 'Introduce un monto válido.',
+    updatedBudget: 'Presupuesto actualizado.',
+    deletedAllExpenses: 'Todos los gastos han sido eliminados.',
+    openSettings: 'Configuración (tema / idioma)',
+    noName: 'Sin nombre',
+    notRegistered: 'No registrado',
+  },
+  en: {
+    title: 'Your Profile',
+    name: 'Name',
+    phone: 'Phone',
+    email: 'Email',
+    budgetLabel: 'Monthly budget',
+    editBudget: 'Edit budget',
+    save: 'Save',
+    cancel: 'Cancel',
+    clearExpensesQuestion:
+      'Delete all current expenses when changing budget? This will remove local and server records.',
+    keep: 'Keep',
+    delete: 'Delete',
+    done: 'Done',
+    error: 'Error',
+    notAuthed: 'User not authenticated.',
+    invalidAmount: 'Enter a valid amount.',
+    updatedBudget: 'Budget updated.',
+    deletedAllExpenses: 'All expenses have been deleted.',
+    openSettings: 'Settings (theme / language)',
+    noName: 'No name',
+    notRegistered: 'Not registered',
+  },
+};
 
 export default function ProfileScreen() {
   const { profile, loading, refreshProfile, sessionUser } = useAuth();
   const userId = sessionUser?.id ?? profile?.id ?? null;
 
+  // contexto de gastos (para sincronizar presupuesto y borrar gastos)
   const { setBudget: setContextBudget, clearAllExpenses } = useExpenses();
 
+  // navegación
+  const navigation = useNavigation<any>();
+
+  // settings (tema + idioma)
+  const settings = useSettings();
+  const theme = settings?.theme ?? 'light';
+  const lang = settings?.lang ?? 'es';
+  const t = i18n[lang] ?? i18n.es; // función de traducción simple
+
+  // estados locales del perfil
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
 
+  // presupuesto local y edición
   const [budget, setBudget] = useState<number>(0);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState<string>('');
   const [savingBudget, setSavingBudget] = useState(false);
 
+  // estilos dinámicos segun tema
+  const styles = getStyles(theme);
+
+  // cargar perfil en campos visibles
   useEffect(() => {
     if (!profile) {
       setName('');
@@ -31,23 +109,22 @@ export default function ProfileScreen() {
     }
   }, [profile]);
 
-  // cargar presupuesto (primero desde profile si viene, si no, desde servicio)
+  // cargar presupuesto (primero desde profile, si no desde BD) y sincronizar con context
   useEffect(() => {
     let mounted = true;
     (async () => {
       if (!userId) return;
       try {
-        // si profile tiene budget, usarlo (evita llamada extra)
         if (profile && typeof profile.budget !== 'undefined') {
           const parsed = Number(profile.budget ?? 0);
           if (mounted) {
             setBudget(parsed);
             setBudgetInput(parsed.toFixed(2));
+            // actualiza contexto local para que otras pantallas lo vean
             try {
-              // sincronizar contexto local
-              setContextBudget(parsed);
-            } catch (e) {
-              // no crítico si falla
+              if (setContextBudget) await setContextBudget(parsed);
+            } catch {
+              // no crítico
             }
           }
         } else {
@@ -57,10 +134,9 @@ export default function ProfileScreen() {
             setBudget(parsed);
             setBudgetInput(parsed.toFixed(2));
             try {
-              // sincronizar contexto local
-              setContextBudget(parsed);
-            } catch (e) {
-              // no crítico si falla
+              if (setContextBudget) await setContextBudget(parsed);
+            } catch {
+              // no crítico
             }
           }
         }
@@ -68,85 +144,108 @@ export default function ProfileScreen() {
         console.warn('[ProfileScreen] load budget', e);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [userId, profile, setContextBudget]);
 
+  // guardar presupuesto (actualiza BD, contexto y pregunta si borrar gastos)
   const onSaveBudget = async () => {
-    if (!userId) return Alert.alert('Error', 'Usuario no autenticado.');
+    if (!userId) return Alert.alert(t.error, t.notAuthed);
     const val = Number(budgetInput);
-    if (isNaN(val) || val < 0) return Alert.alert('Error', 'Introduce un monto válido.');
+    if (isNaN(val) || val < 0) return Alert.alert(t.error, t.invalidAmount);
     setSavingBudget(true);
     try {
       await updateUserBudget(userId, val);
       setBudget(val);
       setEditingBudget(false);
 
-      // sincronizar contexto local para que Summary y AddExpense vean el cambio
+      // sincronizar contexto
       try {
-        setContextBudget(Number(val));
-      } catch (e) {
-        // no crítico si falla
+        if (setContextBudget) await setContextBudget(Number(val));
+      } catch {
+        // ignore
       }
 
-      // refrescar profile en contexto (si lo guardas en users)
-      try { await refreshProfile(); } catch (err) { /* ignore */ }
+      // refrescar profile en AuthContext si corresponde
+      try {
+        if (refreshProfile) await refreshProfile();
+      } catch {
+        // ignore
+      }
 
-      // Preguntar al usuario si desea eliminar todos los gastos
+      // preguntamos si borrar gastos después de cambiar presupuesto
       Alert.alert(
-        'Limpiar gastos',
-        '¿Deseas eliminar todos los gastos actuales al cambiar el presupuesto? (Esto borrará los registros locales y en el servidor).',
+        t.done,
+        t.clearExpensesQuestion,
         [
-          { text: 'Mantener', style: 'cancel' },
+          { text: t.keep, style: 'cancel' },
           {
-            text: 'Eliminar',
+            text: t.delete,
             style: 'destructive',
             onPress: async () => {
               try {
-                await clearAllExpenses(true); // borrar remoto + local
-                Alert.alert('Listo', 'Todos los gastos han sido eliminados.');
+                await clearAllExpenses(true);
+                Alert.alert(t.done, t.deletedAllExpenses);
               } catch (err) {
                 console.error('[ProfileScreen] clearAllExpenses', err);
-                Alert.alert('Error', 'No se pudieron eliminar los gastos.');
+                Alert.alert(t.error, 'No se pudieron eliminar los gastos.');
               }
             },
           },
         ],
       );
 
-      Alert.alert('Listo', 'Presupuesto actualizado.');
+      Alert.alert(t.done, t.updatedBudget);
     } catch (err: any) {
       console.error('[ProfileScreen] updateBudget', err);
-      Alert.alert('Error', err?.message ?? 'No se pudo actualizar presupuesto.');
+      Alert.alert(t.error, err?.message ?? t.error);
     } finally {
       setSavingBudget(false);
     }
   };
 
+  // abrir Settings (Stack padre) — seguro con fallback
+  const goToSettings = () => {
+    const parent = navigation.getParent?.();
+    if (parent && typeof parent.navigate === 'function') {
+      parent.navigate('Settings' as any);
+    } else {
+      try {
+        navigation.navigate('Settings' as any);
+      } catch (e) {
+        console.error('[ProfileScreen] navigate to Settings', e);
+        Alert.alert(t.error, 'No se pudo abrir Configuración. Revisa la navegación.');
+      }
+    }
+  };
+
+  // carga mientras AuthContext loading
   if (loading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={theme === 'dark' ? '#fff' : '#1976d2'} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Tu Perfil</Text>
+      <Text style={styles.title}>{t.title}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Nombre</Text>
-        <Text style={styles.value}>{name || 'Sin nombre'}</Text>
+        <Text style={styles.label}>{t.name}</Text>
+        <Text style={styles.value}>{name || t.noName}</Text>
 
-        <Text style={styles.label}>Teléfono</Text>
-        <Text style={styles.value}>{phone || 'No registrado'}</Text>
+        <Text style={styles.label}>{t.phone}</Text>
+        <Text style={styles.value}>{phone || t.notRegistered}</Text>
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t.email}</Text>
         <Text style={styles.value}>{email || '...'}</Text>
 
-        <View style={{ height: 1, backgroundColor: '#eaeaea', marginVertical: 12 }} />
+        <View style={styles.divider} />
 
-        <Text style={styles.label}>Presupuesto mensual</Text>
+        <Text style={styles.label}>{t.budgetLabel}</Text>
 
         {!editingBudget ? (
           <>
@@ -161,7 +260,7 @@ export default function ProfileScreen() {
                 setBudgetInput(Number(budget ?? 0).toFixed(2));
               }}
             >
-              <Text style={styles.settingsText}>Editar presupuesto</Text>
+              <Text style={styles.settingsText}>{t.editBudget}</Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -172,14 +271,15 @@ export default function ProfileScreen() {
               onChangeText={setBudgetInput}
               keyboardType="numeric"
               placeholder="Ej: 1000.00"
+              placeholderTextColor={theme === 'dark' ? '#999' : '#999'}
             />
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <View style={{ flexDirection: 'row', marginTop: 10 }}>
               <TouchableOpacity
-                style={[styles.saveButton, { flex: 1 }]}
+                style={[styles.saveButton, { flex: 1, marginRight: 8 }]}
                 onPress={onSaveBudget}
                 disabled={savingBudget}
               >
-                <Text style={{ color: '#fff', fontWeight: '700' }}>{savingBudget ? 'Guardando...' : 'Guardar'}</Text>
+                <Text style={styles.saveButtonText}>{savingBudget ? `${t.save}...` : t.save}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -187,85 +287,88 @@ export default function ProfileScreen() {
                 onPress={() => setEditingBudget(false)}
                 disabled={savingBudget}
               >
-                <Text style={{ color: '#1976d2', fontWeight: '700' }}>Cancelar</Text>
+                <Text style={styles.cancelButtonText}>{t.cancel}</Text>
               </TouchableOpacity>
             </View>
           </>
         )}
       </View>
 
-      {/* Nota: el antiguo botón "Configuración" ahora abrirá la pantalla Settings
-          donde pondremos tema / idioma — puedes mantenerlo si quieres */}
       <TouchableOpacity
         style={[styles.settingsButton, { marginTop: 18 }]}
-        onPress={() => {
-          // navegar a Settings (si está registrado)
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { useNavigation } = require('@react-navigation/native');
-            const nav = useNavigation();
-            // @ts-ignore
-            nav.navigate('Settings');
-          } catch {
-            // si no podemos navegar, simplemente ignorar
-          }
-        }}
+        onPress={goToSettings}
       >
-        <Text style={styles.settingsText}>Configuración (tema / idioma)</Text>
+        <Text style={styles.settingsText}>{t.openSettings}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { padding: 16, flex: 1, backgroundColor: '#fff' },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
-  card: {
-    backgroundColor: '#f7f7f7',
-    padding: 16,
-    borderRadius: 8,
-    elevation: 2,
-  },
-  label: {
-    color: '#666',
-    fontWeight: '600',
-    marginTop: 10,
-  },
-  value: {
-    fontSize: 16,
-    color: '#222',
-    marginTop: 2,
-  },
-  settingsButton: {
-    marginTop: 12,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#1976d2',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  settingsText: { color: '#1976d2', fontWeight: '700' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 10,
-    borderRadius: 6,
-    backgroundColor: '#fff',
-  },
-  saveButton: {
-    backgroundColor: '#1976d2',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-});
+/**
+ */
+function getStyles(theme: 'light' | 'dark') {
+  const dark = theme === 'dark';
+
+  return StyleSheet.create({
+    container: {
+      padding: 16,
+      flex: 1,
+      backgroundColor: dark ? '#0d0d0d' : '#fff',
+    },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: dark ? '#0d0d0d' : '#fff' },
+    title: { fontSize: 24, fontWeight: '700', textAlign: 'center', marginBottom: 20, color: dark ? '#fff' : '#111' },
+
+    card: {
+      backgroundColor: dark ? '#121212' : '#f7f7f7',
+      padding: 16,
+      borderRadius: 8,
+      elevation: 2,
+      borderWidth: dark ? 0 : 0,
+    },
+    label: {
+      color: dark ? '#a8a8a8' : '#666',
+      fontWeight: '600',
+      marginTop: 10,
+    },
+    value: {
+      fontSize: 16,
+      color: dark ? '#fff' : '#222',
+      marginTop: 2,
+    },
+    divider: { height: 1, backgroundColor: dark ? '#222' : '#eaeaea', marginVertical: 12 },
+    settingsButton: {
+      marginTop: 12,
+      backgroundColor: dark ? '#1e1e1e' : '#fff',
+      borderWidth: 1,
+      borderColor: '#1976d2',
+      paddingVertical: 10,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    settingsText: { color: '#1976d2', fontWeight: '700' },
+    input: {
+      borderWidth: 1,
+      borderColor: dark ? '#333' : '#ddd',
+      padding: 10,
+      borderRadius: 6,
+      backgroundColor: dark ? '#0d0d0d' : '#fff',
+      color: dark ? '#fff' : '#000',
+    },
+    saveButton: {
+      backgroundColor: '#1976d2',
+      paddingVertical: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    saveButtonText: { color: '#fff', fontWeight: '700' },
+    cancelButton: {
+      backgroundColor: dark ? '#121212' : '#fff',
+      borderWidth: 1,
+      borderColor: dark ? '#333' : '#ddd',
+      paddingVertical: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    cancelButtonText: { color: '#1976d2', fontWeight: '700' },
+  });
+}

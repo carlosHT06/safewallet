@@ -1,10 +1,11 @@
+
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import { useAuth } from './AuthContext';
-import { supabase } from '../services/supabase';
+import { supabase, fetchExpenses, insertExpense, updateExpense, deleteExpenseById, isUuid } from '../services/supabase';
 
-// Types
+
 export type Expense = {
   id: string;
   title: string;
@@ -24,7 +25,8 @@ export type ExpensesContextValue = {
   removeExpense: (id: string) => Promise<void>;
   setBudget: (value: number) => Promise<void>;
   clearAllExpenses: (remote?: boolean) => Promise<void>;
-  refresh: () => Promise<void>; // <-- added refresh
+  refresh: () => Promise<void>;
+  updateExpenseLocalThenRemote: (payload: { id: string; title?: string; amount?: number; category?: string }) => Promise<void>;
 };
 
 const ExpensesContext = createContext<ExpensesContextValue | undefined>(undefined);
@@ -36,11 +38,9 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const { profile, sessionUser } = useAuth?.() ?? { profile: null, sessionUser: null };
 
-  // Keys for AsyncStorage (adjust if your project uses different keys)
   const EXPENSES_KEY = '@expenses';
   const BUDGET_KEY = '@budget';
 
-  // Helper: save expenses locally
   const saveExpensesToStorage = async (list: Expense[]) => {
     try {
       await AsyncStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
@@ -49,25 +49,22 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Load from storage on mount
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const rawExpenses = await AsyncStorage.getItem(EXPENSES_KEY);
-        const parsedExpenses = rawExpenses ? (JSON.parse(rawExpenses) as Expense[]) : [];
-        if (mounted) setExpenses(parsedExpenses || []);
+        const raw = await AsyncStorage.getItem(EXPENSES_KEY);
+        const parsed = raw ? (JSON.parse(raw) as Expense[]) : [];
+        if (mounted) setExpenses(parsed || []);
       } catch (e) {
         console.warn('[ExpensesContext] load expenses', e);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-
     return () => { mounted = false; };
   }, []);
 
-  // load budget from AsyncStorage on start
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -84,16 +81,14 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => { mounted = false; };
   }, []);
 
-  // Sync budget from profile (AuthContext) when it changes
   useEffect(() => {
     (async () => {
       try {
         if (!profile) return;
         const raw = profile.budget;
         if (typeof raw !== 'undefined' && raw !== null) {
-          const cleaned = String(raw).replace(/[^0-9.-]+/g, '');
-          const val = cleaned ? Number(cleaned) : null;
-          if (val !== null && !Number.isNaN(val)) {
+          const val = Number(String(raw).replace(/[^0-9.-]+/g, ''));
+          if (!Number.isNaN(val)) {
             await setBudget(val);
           }
         }
@@ -103,90 +98,65 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     })();
   }, [profile]);
 
-  const totalExpenses = useMemo(() => {
-    return expenses.reduce((s, it) => s + Number(it.amount || 0), 0);
-  }, [expenses]);
-
-  const remainingBudget = useMemo(() => {
-    if (budget === null) return null;
-    return budget - totalExpenses;
-  }, [budget, totalExpenses]);
+  const totalExpenses = useMemo(() => expenses.reduce((s, it) => s + Number(it.amount || 0), 0), [expenses]);
+  const remainingBudget = useMemo(() => (budget === null ? null : budget - totalExpenses), [budget, totalExpenses]);
 
   const saveBudgetToStorage = async (value: number | null) => {
     try {
-      if (value === null) {
-        await AsyncStorage.removeItem(BUDGET_KEY);
-      } else {
-        await AsyncStorage.setItem(BUDGET_KEY, String(value));
-      }
+      if (value === null) await AsyncStorage.removeItem(BUDGET_KEY);
+      else await AsyncStorage.setItem(BUDGET_KEY, String(value));
     } catch (e) {
       console.warn('[ExpensesContext] saveBudgetToStorage', e);
     }
   };
 
-  // Set budget (state + persist)
   const setBudget = async (value: number) => {
     setBudgetState(value);
     await saveBudgetToStorage(value);
   };
 
-  // Refresh expenses from remote (Supabase) and update local state
+  
   const refresh = async () => {
     setLoading(true);
     try {
       const userId = sessionUser?.id ?? profile?.id ?? null;
       if (!userId) {
-        // nothing to fetch
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
-        .eq('user_id', userId)
-        .order('date', { ascending: false });
-
-      if (error) {
-        console.warn('[ExpensesContext] refresh error', error);
-      } else if (Array.isArray(data)) {
-        // normalize returned rows to Expense[] (ensure required fields)
-        const rows = data.map((r: any) => ({
-          id: String(r.id ?? `${Date.now()}-${Math.random()}`),
-          title: r.title ?? '',
-          amount: Number(r.amount ?? 0),
-          date: r.date ?? (r.created_at ?? new Date().toISOString()),
-          category: r.category ?? 'General',
-          ...r,
-        }));
-        setExpenses(rows);
-        await saveExpensesToStorage(rows);
-      }
+      const data = await fetchExpenses(userId);
+      const rows = data.map((r: any) => ({
+        id: String(r.id),
+        title: r.title ?? '',
+        amount: Number(r.amount ?? 0),
+        date: r.date ?? r.created_at,
+        category: r.category ?? 'General',
+        ...r,
+      }));
+      setExpenses(rows);
+      await saveExpensesToStorage(rows);
     } catch (e) {
-      console.error('[ExpensesContext] refresh unexpected', e);
+      console.error('[ExpensesContext] refresh error', e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Add expense with validation against budget
   const addExpense = async (expense: Omit<Expense, 'id'>) => {
     const amountNum = Number(expense.amount);
     if (Number.isNaN(amountNum) || amountNum <= 0) {
       Alert.alert('Error', 'Monto inválido');
       return;
     }
-
-    const numericBudget = budget;
-    const latestSum = totalExpenses;
-
-    if (numericBudget !== null && latestSum + amountNum > numericBudget) {
+    if (budget !== null && totalExpenses + amountNum > budget) {
       Alert.alert('Presupuesto excedido', 'Este gasto excede el presupuesto disponible.');
       return;
     }
 
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const newExpense: Expense = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      id: tempId,
       title: expense.title ?? '',
       amount: amountNum,
       date: expense.date ?? new Date().toISOString(),
@@ -197,15 +167,42 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setExpenses(next);
     await saveExpensesToStorage(next);
 
-    // persist remote
+    
     try {
-      const userId = sessionUser?.id ?? profile?.id ?? null;
-      if (userId) {
-        const { error } = await supabase.from('expenses').insert([{ ...newExpense, user_id: userId }]);
-        if (error) console.warn('[ExpensesContext] remote insert error', error);
+      const resp = await insertExpense({
+        title: newExpense.title,
+        amount: newExpense.amount,
+        category: newExpense.category,
+      });
+      if (resp && (resp as any).id) {
+        const createdId = String((resp as any).id);
+        const replaced = next.map((e) => (e.id === tempId ? { ...e, id: createdId } : e));
+        setExpenses(replaced);
+        await saveExpensesToStorage(replaced);
+      } else {
+       
+        await refresh();
       }
     } catch (e) {
-      console.warn('[ExpensesContext] save expense remote', e);
+      console.warn('[ExpensesContext] remote insert failed', e);
+      
+    }
+  };
+
+  
+  const updateExpenseLocalThenRemote = async (payload: { id: string; title?: string; amount?: number; category?: string }) => {
+    const next = expenses.map((e) => (e.id === payload.id ? { ...e, ...payload } : e));
+    setExpenses(next);
+    await saveExpensesToStorage(next);
+
+    if (isUuid(payload.id)) {
+      try {
+        await updateExpense(payload as any); 
+      } catch (err) {
+        console.warn('[ExpensesContext] update remote error', err);
+      }
+    } else {
+      
     }
   };
 
@@ -214,34 +211,28 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setExpenses(next);
     await saveExpensesToStorage(next);
 
-    // delete remote if exists
-    try {
-      const { error } = await supabase.from('expenses').delete().eq('id', id);
-      if (error) console.warn('[ExpensesContext] remote delete error', error);
-    } catch (err) {
-      console.warn('[ExpensesContext] removeExpense remote', err);
+    if (isUuid(id)) {
+      try {
+        await deleteExpenseById(id);
+      } catch (err) {
+        console.warn('[ExpensesContext] remote delete error', err);
+      }
+    } else {
+     
     }
   };
 
-  // Clear all expenses (local + remote optional)
   const clearAllExpenses = async (remote = true) => {
     try {
       if (remote) {
-        try {
-          const userId = sessionUser?.id ?? profile?.id ?? null;
-          if (userId) {
-            const { error } = await supabase.from('expenses').delete().eq('user_id', userId);
-            if (error) console.warn('[ExpensesContext] remote delete all error', error);
-          }
-        } catch (err) {
-          console.warn('[ExpensesContext] remote clearAllExpenses', err);
+        const userId = sessionUser?.id ?? profile?.id ?? null;
+        if (userId) {
+          
+          await supabase.from('expenses').delete().eq('owner_id', userId);
         }
       }
-
       setExpenses([]);
       await AsyncStorage.removeItem(EXPENSES_KEY);
-
-      console.log('[ExpensesContext] clearAllExpenses: expenses cleared (remote:', remote, ')');
     } catch (e) {
       console.error('[ExpensesContext] clearAllExpenses error', e);
       throw e;
@@ -259,6 +250,7 @@ export const ExpensesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setBudget,
     clearAllExpenses,
     refresh,
+    updateExpenseLocalThenRemote,
   };
 
   return <ExpensesContext.Provider value={value}>{children}</ExpensesContext.Provider>;

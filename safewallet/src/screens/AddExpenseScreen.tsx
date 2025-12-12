@@ -10,15 +10,16 @@ import {
   Platform,
   FlatList,
 } from 'react-native';
+
 import { useExpenses } from '../context/ExpensesContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { TabParamList } from '../types/navigation';
-import { SupabaseExpense, updateExpense } from '../services/supabase';
+import { supabase, updateExpense } from '../services/supabase';
+import { useSettings } from '../context/SettingsContext';
 
 type NavProp = BottomTabNavigationProp<TabParamList, 'AddExpense'>;
 
-// Lista predeterminada de categorías (modifica según necesites)
 const defaultCategories = [
   'Comida',
   'Transporte',
@@ -29,6 +30,7 @@ const defaultCategories = [
   'Educación',
   'Trabajo',
   'Regalos',
+  'Computadora',
   'Otra',
 ];
 
@@ -36,61 +38,65 @@ export default function AddExpenseScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute();
   const { addExpense, refresh, expenses, budget } = useExpenses();
+  const { theme, lang } = useSettings();
 
   const params: any = (route.params ?? {}) as { edit?: boolean; expenseId?: string };
+
+  // idioma (traducciones simples)
+  const t = (es: string, en: string) => (lang === 'es' ? es : en);
+
+  // tema dinámico
+  const isDark = theme === 'dark';
+  const colors = {
+    bg: isDark ? '#121212' : '#fff',
+    card: isDark ? '#1e1e1e' : '#fff',
+    text: isDark ? '#fff' : '#000',
+    subtle: isDark ? '#bbb' : '#666',
+    border: isDark ? '#333' : '#ddd',
+  };
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+
   const [isEdit, setIsEdit] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Para las sugerencias / filtro
   const [queryCategory, setQueryCategory] = useState('');
-  const [filteredCategories, setFilteredCategories] = useState<string[]>(defaultCategories);
+  const [filteredCategories, setFilteredCategories] = useState(defaultCategories);
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  // Prefill si es edición (usa tu fetch actual)
+  // detectar edición
   useEffect(() => {
-    try {
-      if (params?.edit && params.expenseId) {
-        setIsEdit(true);
-        setEditingId(params.expenseId);
-      }
-    } catch (e) {
-      console.warn('prefill edit error', e);
+    if (params?.edit && params.expenseId) {
+      setIsEdit(true);
+      setEditingId(params.expenseId);
     }
   }, [params]);
 
-  // Cargar datos de la fila cuando editingId esté listo
+  // cargar datos desde BD
   useEffect(() => {
     (async () => {
       if (params?.edit && params.expenseId) {
-        try {
-          const { data, error } = await (await import('../services/supabase')).supabase
-            .from('expenses')
-            .select('*')
-            .eq('id', params.expenseId)
-            .maybeSingle();
+        const { data } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('id', params.expenseId)
+          .maybeSingle();
 
-          if (error) {
-            console.warn('get single expense error', error);
-          } else if (data) {
-            setTitle(String(data.title ?? ''));
-            setCategory(String(data.category ?? ''));
-            setAmount(String(data.amount ?? ''));
-            setQueryCategory(String(data.category ?? ''));
-            setShowSuggestions(false);
-          }
-        } catch (err) {
-          console.warn('prefill fetch exception', err);
+        if (data) {
+          setTitle(String(data.title));
+          setCategory(String(data.category));
+          setAmount(String(data.amount));
+          setQueryCategory(String(data.category));
+          setShowSuggestions(false);
         }
       }
     })();
   }, [params]);
 
-  // filtrar categorías según lo que el usuario escriba
+  // filtro de categorías
   useEffect(() => {
     const q = queryCategory.trim().toLowerCase();
     if (!q) {
@@ -98,13 +104,11 @@ export default function AddExpenseScreen() {
       return;
     }
     const filtered = defaultCategories.filter((c) => c.toLowerCase().includes(q));
-    // si no hay coincidencias, mostrar la opción "Crear nueva"
-    setFilteredCategories(filtered.length ? filtered : ['Crear nueva categoría']);
+    setFilteredCategories(filtered.length ? filtered : [t('Crear nueva categoría', 'Create new category')]);
   }, [queryCategory]);
 
   const selectCategory = (c: string) => {
-    if (c === 'Crear nueva categoría') {
-      // dejar campo para escribir
+    if (c === t('Crear nueva categoría', 'Create new category')) {
       setCategory('');
       setQueryCategory('');
       setShowSuggestions(false);
@@ -115,62 +119,56 @@ export default function AddExpenseScreen() {
     setShowSuggestions(false);
   };
 
-  // --- CÁLCULOS DE PRESUPUESTO ---
+  // presupuesto (tu lógica intacta)
   const totalSpent = expenses.reduce((s, it) => s + Number(it.amount), 0);
-
-  // si estamos editando, obtener el monto original de ese gasto para ajustar el cálculo
   const originalExpense = editingId ? expenses.find((e) => e.id === editingId) : undefined;
   const originalAmount = originalExpense ? Number(originalExpense.amount) : 0;
 
-  // parse budget defensively (acepta string con $ o número)
-  const parseBudgetToNumber = (raw: any): number | null => {
+  const parseBudget = (raw: any): number | null => {
     if (raw === null || raw === undefined) return null;
     if (typeof raw === 'number') return raw;
     const cleaned = String(raw).replace(/[^0-9.-]+/g, '');
-    const n = cleaned ? Number(cleaned) : NaN;
+    const n = Number(cleaned);
     return isNaN(n) ? null : n;
   };
-  const numericBudget = parseBudgetToNumber(budget);
+  const numericBudget = parseBudget(budget);
 
-  // restante disponible teniendo en cuenta si estamos editando (no restar originalAmount si no estamos editando)
   const remaining = numericBudget !== null
     ? numericBudget - totalSpent + (isEdit ? originalAmount : 0)
     : null;
 
-  // determinar si el monto ingresado excede el presupuesto
   const parsedAmount = Number(amount || '0');
   const wouldExceed = remaining !== null && parsedAmount > remaining;
 
-  // formato simple para mostrar monedas (puedes cambiar)
-  const formatMoney = (n: number | null) => {
-    if (n === null) return '';
-    return `L ${n}`;
-  };
-  // --- FIN cálculo presupuesto ---
+  const formatMoney = (n: number | null) =>
+    n === null ? '' : `L ${n}`;
 
+  // guardar
   const onSave = async () => {
     const finalCategory = (category || queryCategory).trim() || 'General';
-    if (!title.trim()) return Alert.alert('Error', 'Ingrese un título');
+    if (!title.trim()) return Alert.alert('Error', t('Ingrese un título', 'Enter a title'));
+    
     const amt = Number(amount);
-    if (isNaN(amt) || amt <= 0) return Alert.alert('Error', 'Ingrese un monto válido');
+    if (isNaN(amt) || amt <= 0)
+      return Alert.alert('Error', t('Ingrese un monto válido', 'Enter a valid amount'));
 
-    // Validación local contra presupuesto (defensiva)
+    // validación presupuesto
     if (numericBudget !== null) {
-      const nuevoTotalIfSave = (isEdit ? totalSpent - originalAmount : totalSpent) + amt;
-      if (nuevoTotalIfSave > numericBudget) {
-        const gastadoActualmente = (isEdit ? totalSpent - originalAmount : totalSpent);
-        const disponible = numericBudget - gastadoActualmente;
-        Alert.alert(
-          'Presupuesto excedido',
-          `No se puede registrar este gasto porque excede tu presupuesto.\n\nPresupuesto: ${formatMoney(numericBudget)}\nGastado actualmente: ${formatMoney(gastadoActualmente)}\nDisponible: ${formatMoney(disponible >= 0 ? disponible : 0)}`
+      const nuevoTotal = (isEdit ? totalSpent - originalAmount : totalSpent) + amt;
+      if (nuevoTotal > numericBudget) {
+        return Alert.alert(
+          t('Presupuesto excedido', 'Budget exceeded'),
+          t(
+            'No se puede registrar este gasto.',
+            'You cannot register this expense.'
+          )
         );
-        return; // detener guardado
       }
     }
 
     setSaving(true);
     try {
-      if (params?.edit && editingId) {
+      if (isEdit && editingId) {
         await updateExpense({
           id: editingId,
           title: title.trim(),
@@ -178,58 +176,62 @@ export default function AddExpenseScreen() {
           amount: amt,
         });
         await refresh();
-        Alert.alert('Listo', 'Gasto actualizado');
+        Alert.alert(t('Listo', 'Done'), t('Gasto actualizado', 'Expense updated'));
         navigation.navigate('Home' as never);
         return;
       }
 
       await addExpense({ title: title.trim(), category: finalCategory, amount: amt });
-      Alert.alert('Listo', 'Gasto guardado');
+      Alert.alert(t('Listo', 'Done'), t('Gasto guardado', 'Expense saved'));
       navigation.navigate('Home' as never);
-    } catch (err: any) {
-      console.error('AddExpense error:', err);
-      Alert.alert('Error', err?.message ?? 'No se pudo guardar el gasto.');
+    } catch (e) {
+      Alert.alert('Error', t('No se pudo guardar el gasto.', 'Could not save expense.'));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.container}>
-        <Text style={styles.title}>{params?.edit ? 'Editar gasto' : 'Nuevo gasto'}</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {isEdit ? t('Editar gasto', 'Edit expense') : t('Nuevo gasto', 'New expense')}
+        </Text>
 
-        <Text style={styles.label}>Título</Text>
-        <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Ej: Almuerzo" />
-
-        <Text style={styles.label}>Categoría</Text>
-
-        {/* Input que muestra sugerencias mientras se escribe */}
+        <Text style={[styles.label, { color: colors.text }]}>{t('Título', 'Title')}</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.border, color: colors.text }]}
+          value={title}
+          onChangeText={setTitle}
+          placeholder={t('Ej: Almuerzo', 'Ex: Lunch')}
+          placeholderTextColor={colors.subtle}
+        />
+
+        <Text style={[styles.label, { color: colors.text }]}>{t('Categoría', 'Category')}</Text>
+        <TextInput
+          style={[styles.input, { borderColor: colors.border, color: colors.text }]}
           value={queryCategory}
           onChangeText={(t) => {
             setQueryCategory(t);
             setShowSuggestions(true);
-            // si el usuario borra y ya había seleccionado una categoría, queremos limpiar la selección
             if (t !== category) setCategory('');
           }}
-          placeholder="Escribe o selecciona una categoría"
+          placeholder={t('Escribe o selecciona una categoría', 'Type or select a category')}
+          placeholderTextColor={colors.subtle}
         />
 
-        {/* Sugerencias (se muestran si showSuggestions es true) */}
+        {/* sugerencias */}
         {showSuggestions && (
-          <View style={styles.suggestionsWrap}>
+          <View style={[styles.suggestionsWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <FlatList
               data={filteredCategories}
               keyExtractor={(item) => item}
-              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.suggestionItem}
-                  onPress={() => selectCategory(item)}
-                >
-                  <Text style={styles.suggestionText}>{item}</Text>
+                <TouchableOpacity onPress={() => selectCategory(item)}>
+                  <Text style={[styles.suggestionText, { color: colors.text }]}>{item}</Text>
                 </TouchableOpacity>
               )}
               ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
@@ -237,50 +239,56 @@ export default function AddExpenseScreen() {
           </View>
         )}
 
-        {/* Si eligió una categoría (o si escribió pero no la guardó), mostramos la selección */}
-        <View style={{ marginTop: 10 }}>
-          <Text style={{ color: '#666' }}>Seleccionado:</Text>
-          <Text style={{ fontWeight: '700', marginTop: 4 }}>{(category || queryCategory) || 'Ninguno'}</Text>
-        </View>
+        <Text style={[styles.label, { marginTop: 10, color: colors.subtle }]}>{t('Seleccionado', 'Selected')}:</Text>
+        <Text style={{ fontWeight: '700', marginTop: 4, color: colors.text }}>
+          {(category || queryCategory) || '—'}
+        </Text>
 
-        <Text style={styles.label}>Monto</Text>
+        <Text style={[styles.label, { color: colors.text }]}>{t('Monto', 'Amount')}</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { borderColor: colors.border, color: colors.text }]}
           value={amount}
           onChangeText={setAmount}
           placeholder="0.00"
+          placeholderTextColor={colors.subtle}
           keyboardType="numeric"
         />
 
-        {/* Mostrar info de presupuesto (si existe) */}
+        {/* presupuesto info */}
         {numericBudget !== null && (
           <View style={{ marginTop: 12 }}>
-            <Text style={{ fontSize: 14, color: '#666' }}>
-              Presupuesto: <Text style={{ fontWeight: '700' }}>{formatMoney(numericBudget)}</Text>
+            <Text style={{ color: colors.text }}>
+              {t('Presupuesto', 'Budget')}: <Text style={{ fontWeight: '700' }}>{formatMoney(numericBudget)}</Text>
             </Text>
-            <Text style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
-              Gastado: <Text style={{ fontWeight: '700' }}>{formatMoney(isEdit ? totalSpent - originalAmount : totalSpent)}</Text>
+            <Text style={{ color: colors.text, marginTop: 4 }}>
+              {t('Gastado', 'Spent')}: <Text style={{ fontWeight: '700' }}>{formatMoney(isEdit ? totalSpent - originalAmount : totalSpent)}</Text>
             </Text>
-            <Text style={{ fontSize: 14, marginTop: 4 }}>
-              Disponible:{' '}
-              <Text style={{ fontWeight: '700', color: (remaining !== null && remaining < 0) ? 'red' : '#000' }}>
+            <Text style={{ color: colors.text, marginTop: 4 }}>
+              {t('Disponible', 'Available')}:{' '}
+              <Text style={{ fontWeight: '700', color: remaining !== null && remaining < 0 ? 'red' : colors.text }}>
                 {formatMoney(remaining)}
               </Text>
             </Text>
             {wouldExceed && (
-              <Text style={{ marginTop: 8, color: 'red', fontWeight: '600' }}>
-                Este gasto excede tu presupuesto disponible.
+              <Text style={{ color: 'red', marginTop: 6 }}>
+                {t('Este gasto excede tu presupuesto disponible.', 'This expense exceeds your remaining budget.')}
               </Text>
             )}
           </View>
         )}
 
         <TouchableOpacity
-          style={[styles.button, (saving || wouldExceed) && { opacity: 0.6 }]}
+          style={[styles.button, { backgroundColor: isDark ? '#0a84ff' : '#1976d2' }]}
           onPress={onSave}
           disabled={saving || wouldExceed}
         >
-          <Text style={styles.buttonText}>{saving ? 'Guardando...' : params?.edit ? 'Actualizar' : 'Guardar gasto'}</Text>
+          <Text style={styles.buttonText}>
+            {saving
+              ? t('Guardando...', 'Saving...')
+              : isEdit
+              ? t('Actualizar', 'Update')
+              : t('Guardar gasto', 'Save expense')}
+          </Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -288,33 +296,26 @@ export default function AddExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, flex: 1, backgroundColor: '#fff' },
+  container: { padding: 16, flex: 1 },
   title: { fontSize: 20, fontWeight: '700', marginBottom: 12 },
   label: { marginTop: 8, marginBottom: 6, fontSize: 14 },
   input: {
     borderWidth: 1,
-    borderColor: '#e5e5e5',
     padding: 10,
     borderRadius: 8,
-    backgroundColor: '#fff',
   },
   suggestionsWrap: {
     maxHeight: 140,
     marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
     padding: 8,
+    borderWidth: 1,
     borderRadius: 8,
-    backgroundColor: '#fafafa',
   },
-  suggestionItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 6,
+  suggestionText: {
+    fontSize: 15,
   },
-  suggestionText: { fontSize: 15 },
   button: {
     marginTop: 18,
-    backgroundColor: '#1976d2',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',

@@ -30,7 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // actualizar profile + storage
+  
   const setProfileAndStore = async (p: Profile | null) => {
     setProfile(p);
     try {
@@ -56,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // función pública para refrescar perfil
+  
   const refreshProfile = async () => {
     setLoading(true);
     try {
@@ -89,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // inicialización
+  
   useEffect(() => {
     let mounted = true;
 
@@ -117,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })();
 
-    // escuchar cambios del auth
+  
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
       const eventStr = String(event);
       console.log('[AuthProvider] event:', eventStr);
@@ -146,7 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       mounted = false;
       try {
-        // @ts-ignore
+        
         sub?.subscription?.unsubscribe?.();
       } catch {}
     };

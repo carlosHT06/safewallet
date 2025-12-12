@@ -34,7 +34,7 @@ const expensesSlice = createSlice({
         amount: action.payload.amount,
         date: new Date().toISOString().slice(0, 10),
       };
-      state.list.unshift(newExpense); // agrega al inicio
+      state.list.unshift(newExpense); 
     },
     removeExpense: (state, action: PayloadAction<string>) => {
       state.list = state.list.filter((exp) => exp.id !== action.payload);

@@ -1,106 +1,164 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions, ScrollView } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import { useExpenses } from '../context/ExpensesContext';
+import { useSettings } from '../context/SettingsContext';
+import { getRate } from '../services/exchangeService';
 
 const screenWidth = Dimensions.get('window').width;
 
 export default function SummaryScreen() {
   const { expenses, budget } = useExpenses();
+  const { currency, activeTheme, loading: settingsLoading } = useSettings();
 
-  const totalSpent = useMemo(() => {
+  const [rate, setRate] = useState<number | null>(null);
+  const [loadingRate, setLoadingRate] = useState(false);
+
+  /* ---------------------- Tasa de cambio --------------------- */
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (currency === 'HNL') {
+        if (mounted) setRate(1);
+        return;
+      }
+      setLoadingRate(true);
+      try {
+        const r = await getRate('HNL', currency);
+        if (mounted) setRate(Number(r));
+      } catch (e) {
+        console.warn('[SummaryScreen] getRate', e);
+        if (mounted) setRate(null);
+      } finally {
+        if (mounted) setLoadingRate(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [currency]);
+
+  /* ---------------------- Montos ---------------------- */
+  const totalSpentHNL = useMemo(() => {
     return expenses.reduce((sum, item) => sum + Number(item.amount), 0);
   }, [expenses]);
 
-  const parseBudgetToNumber = (raw: any): number | null => {
-    if (raw === null || raw === undefined) return null;
-    if (typeof raw === 'number') return raw;
-    const cleaned = String(raw).replace(/[^0-9.-]+/g, '');
+  const numericBudgetHNL = (() => {
+    if (!budget) return null;
+    const cleaned = String(budget).replace(/[^0-9.-]+/g, '');
     const n = cleaned ? Number(cleaned) : NaN;
     return isNaN(n) ? null : n;
-  };
-  const numericBudget = parseBudgetToNumber(budget);
-  const remaining = numericBudget !== null ? numericBudget - totalSpent : null;
+  })();
 
-  const categories = useMemo(() => {
+  const totalSpent = rate != null ? totalSpentHNL * rate : null;
+  const numericBudget = (rate != null && numericBudgetHNL != null) ? numericBudgetHNL * rate : null;
+  const remaining = numericBudget != null ? numericBudget - (totalSpent ?? 0) : null;
+
+  /* ---------------------- Categorías ---------------------- */
+  const categoriesHNL = useMemo(() => {
     const map: Record<string, number> = {};
     expenses.forEach((ex) => {
       const cat = ex.category ?? 'General';
-      if (!map[cat]) map[cat] = 0;
-      map[cat] += Number(ex.amount);
+      map[cat] = (map[cat] || 0) + Number(ex.amount);
     });
     return map;
   }, [expenses]);
 
+  const categories = useMemo(() => {
+    if (rate == null) return categoriesHNL;
+    const map: Record<string, number> = {};
+    Object.keys(categoriesHNL).forEach((k) => {
+      map[k] = categoriesHNL[k] * rate;
+    });
+    return map;
+  }, [categoriesHNL, rate]);
+
   const hasData = expenses.length > 0;
+
   const pieData = Object.keys(categories).map((cat, i) => ({
     key: `${cat}-${i}`,
     name: cat,
-    amount: categories[cat],
-    color: colors[i % colors.length],
-    legendFontColor: '#333',
+    population: categories[cat],
+    color: chartColors[i % chartColors.length],
+    legendFontColor: activeTheme.text,
     legendFontSize: 14,
   }));
 
   const barData = {
     labels: Object.keys(categories),
-    datasets: [{ data: Object.keys(categories).map((c) => categories[c]) }],
+    datasets: [{ data: Object.values(categories) }],
   };
 
   const formatMoney = (n: number | null) => {
     if (n === null) return '-';
-    return `L ${Number.isInteger(n) ? n : n.toFixed(2)}`;
+    return `${currency === 'HNL' ? 'L' : '$'} ${n.toFixed(2)}`;
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Resumen de Gastos</Text>
+  if (settingsLoading) return <View style={styles.center}><ActivityIndicator color={activeTheme.primary} /></View>;
 
-      <View style={styles.budgetBox}>
-        <Text style={styles.budgetLabel}>Presupuesto total</Text>
-        <Text style={styles.budgetValue}>{formatMoney(numericBudget)}</Text>
+  return (
+    <ScrollView style={[styles.container, { backgroundColor: activeTheme.background }]}>
+      
+      <Text style={[styles.title, { color: activeTheme.text }]}>
+        Resumen de Gastos
+      </Text>
+
+      {/* Caja de presupuesto */}
+      <View style={[styles.budgetBox, { backgroundColor: activeTheme.card }]}>
+        <Text style={[styles.budgetLabel, { color: activeTheme.text }]}>Presupuesto total</Text>
+        <Text style={[styles.budgetValue, { color: activeTheme.text }]}>
+          {formatMoney(numericBudget)}
+        </Text>
 
         <View style={styles.rcRow}>
           <View style={styles.rcCol}>
-            <Text style={styles.smallLabel}>Gastado</Text>
-            <Text style={styles.smallValue}>{formatMoney(totalSpent)}</Text>
+            <Text style={[styles.smallLabel, { color: activeTheme.text }]}>Gastado</Text>
+            <Text style={[styles.smallValue, { color: activeTheme.text }]}>
+              {formatMoney(totalSpent)}
+            </Text>
           </View>
 
           <View style={styles.rcCol}>
-            <Text style={styles.smallLabel}>Disponible</Text>
-            <Text style={[styles.smallValue, remaining !== null && remaining < 0 ? styles.negative : null]}>
+            <Text style={[styles.smallLabel, { color: activeTheme.text }]}>Disponible</Text>
+            <Text
+              style={[
+                styles.smallValue,
+                { color: remaining != null && remaining < 0 ? 'red' : activeTheme.text }
+              ]}
+            >
               {formatMoney(remaining)}
             </Text>
           </View>
         </View>
 
-        {numericBudget !== null && remaining !== null && remaining <= (numericBudget * 0.15) && (
-          <Text style={styles.warningText}>Advertencia: te queda menos del 15% del presupuesto.</Text>
+        {loadingRate && (
+          <Text style={{ marginTop: 8, color: activeTheme.text }}>
+            Actualizando tasas...
+          </Text>
         )}
       </View>
 
+      {/* Si no hay datos */}
       {!hasData && (
-        <View style={styles.noDataBox}>
-          <Text style={styles.noDataText}>No se han registrado gastos aún.</Text>
+        <View style={[styles.noDataBox, { backgroundColor: activeTheme.card }]}>
+          <Text style={[styles.noDataText, { color: activeTheme.text }]}>
+            No se han registrado gastos aún.
+          </Text>
         </View>
       )}
 
+      {/* Sí hay datos */}
       {hasData && (
         <>
           {pieData.length > 0 && (
             <>
-              <Text style={styles.subtitle}>Gastos por categoría</Text>
+              <Text style={[styles.subtitle, { color: activeTheme.text }]}>
+                Gastos por categoría ({currency})
+              </Text>
+
               <PieChart
-                data={pieData.map((item) => ({
-                  name: item.name,
-                  population: item.amount,
-                  color: item.color,
-                  legendFontColor: item.legendFontColor,
-                  legendFontSize: item.legendFontSize,
-                }))}
-                width={screenWidth}
+                data={pieData}
+                width={screenWidth - 20}
                 height={220}
-                chartConfig={chartConfig}
+                chartConfig={chartConfig(activeTheme)}
                 accessor="population"
                 backgroundColor="transparent"
                 paddingLeft="15"
@@ -111,14 +169,17 @@ export default function SummaryScreen() {
 
           {Object.keys(categories).length > 0 && (
             <>
-              <Text style={styles.subtitle}>Comparación de categorías</Text>
+              <Text style={[styles.subtitle, { color: activeTheme.text }]}>
+                Comparación de categorías ({currency})
+              </Text>
+
               <BarChart
                 data={barData}
-                width={screenWidth - 15}
+                width={screenWidth - 20}
                 height={260}
                 fromZero
                 showValuesOnTopOfBars
-                chartConfig={chartConfig}
+                chartConfig={chartConfig(activeTheme)}
                 style={{ borderRadius: 12 }}
                 yAxisLabel=""
                 yAxisSuffix=""
@@ -131,28 +192,39 @@ export default function SummaryScreen() {
   );
 }
 
-const colors = ['#4CAF50', '#FF9800', '#2196F3', '#E91E63', '#9C27B0', '#FFC107'];
+/* ---------------------- Colores de gráfica ---------------------- */
+const chartColors = ['#4CAF50', '#FF9800', '#2196F3', '#E91E63', '#9C27B0', '#FFC107'];
 
-const chartConfig = {
-  backgroundGradientFrom: '#fff',
-  backgroundGradientTo: '#fff',
+const chartConfig = (theme: any) => ({
+  backgroundGradientFrom: theme.background,
+  backgroundGradientTo: theme.background,
+  color: (opacity = 1) => theme.text + Math.round(opacity * 255).toString(16),
   decimalPlaces: 2,
-  color: (opacity = 1) => `rgba(33, 33, 33, ${opacity})`,
-};
+});
 
+/* ---------------------- Estilos ---------------------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12, backgroundColor: '#fff' },
+  container: { flex: 1, padding: 12 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
   title: { textAlign: 'center', fontSize: 22, fontWeight: '700', marginBottom: 12 },
   subtitle: { fontSize: 18, fontWeight: '600', marginVertical: 10 },
-  noDataBox: { backgroundColor: '#f3f3f3', padding: 20, borderRadius: 10, marginTop: 20 },
-  noDataText: { textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#666' },
-  budgetBox: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 12, elevation: 1, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4 },
-  budgetLabel: { fontSize: 14, color: '#666' },
+
+  budgetBox: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+
+  budgetLabel: { fontSize: 14 },
   budgetValue: { fontSize: 20, fontWeight: '800', marginTop: 4 },
+
   rcRow: { flexDirection: 'row', marginTop: 12, justifyContent: 'space-between' },
   rcCol: { flex: 1, alignItems: 'flex-start' },
-  smallLabel: { color: '#666' },
+
+  smallLabel: {},
   smallValue: { fontWeight: '700', marginTop: 4 },
-  negative: { color: 'red' },
-  warningText: { marginTop: 8, color: '#b71c1c', fontWeight: '700' },
+
+  noDataBox: { padding: 20, borderRadius: 10, marginTop: 20 },
+  noDataText: { textAlign: 'center', fontSize: 16, fontWeight: '600' },
 });

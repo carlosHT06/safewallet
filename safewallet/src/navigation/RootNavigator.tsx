@@ -27,19 +27,6 @@ function MissingScreen({ name }: { name: string }) {
 }
 
 function AppTabs() {
-  // Debug: comprueba imports en consola
-  // (elimina/consulta esto después de depurar)
-  // eslint-disable-next-line no-console
-  console.log('Screens imports:', {
-    LoginScreen,
-    RegisterScreen,
-    HomeScreen,
-    AddExpenseScreen,
-    SummaryScreen,
-    ProfileScreen,
-    SettingsScreen,
-  });
-
   return (
     <Tab.Navigator
       initialRouteName="Home"
@@ -73,6 +60,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Login" component={LoginScreen ?? (() => <MissingScreen name="Login" />)} />
       <Stack.Screen name="Register" component={RegisterScreen ?? (() => <MissingScreen name="Register" />)} />
       <Stack.Screen name="AppTabs" component={AppTabs} />
+      {/* Settings está en el Stack: se mostrará encima de las tabs cuando se navegue a ella */}
       <Stack.Screen name="Settings" component={SettingsScreen ?? (() => <MissingScreen name="Settings" />)} />
     </Stack.Navigator>
   );

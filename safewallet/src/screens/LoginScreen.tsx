@@ -45,7 +45,6 @@ export default function LoginScreen({ navigation }: any) {
     try {
       console.log('[Login] Attempting signInWithPassword for:', normalizedEmail);
 
-      // 1) Try to sign in first
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
@@ -53,7 +52,6 @@ export default function LoginScreen({ navigation }: any) {
 
       console.log('[Login] signIn response:', signInData, signInError);
       if (signInError) {
-        // show friendly message
         const msg = signInError.message ?? 'Correo o contraseña incorrectos.';
         Alert.alert('Error al iniciar sesión', msg);
         setLoading(false);
@@ -62,7 +60,6 @@ export default function LoginScreen({ navigation }: any) {
 
       const user = signInData.user ?? null;
       if (!user) {
-        // If no user returned, something odd happened (maybe email confirmation required)
         Alert.alert(
           'No autenticado',
           'El inicio de sesión no devolvió un usuario. Revisa si necesitas confirmar tu correo.'
@@ -71,7 +68,6 @@ export default function LoginScreen({ navigation }: any) {
         return;
       }
 
-      // 2) Fetch profile from public.users using authenticated context
       try {
         console.log('[Login] Fetching profile for user id:', user.id);
         const { data: profile, error: profileError } = await supabase
@@ -82,19 +78,16 @@ export default function LoginScreen({ navigation }: any) {
 
         console.log('[Login] profile fetch result:', profile, profileError);
         if (profileError) {
-          // warn but allow login
           console.warn('[Login] profile fetch error:', profileError);
         } else if (!profile) {
           console.warn('[Login] profile not found in public.users for id:', user.id);
         } else {
-          // you can store profile in state/context if needed
           console.log('[Login] profile:', profile);
         }
       } catch (profileFetchErr) {
         console.warn('[Login] exception fetching profile:', profileFetchErr);
       }
 
-      // 3) navigate to app
       navigation.replace('AppTabs');
     } catch (err: any) {
       console.error('Login error (catch):', err);
